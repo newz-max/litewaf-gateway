@@ -17,20 +17,6 @@
       }
     },
     {
-      "id": 2,
-      "name": "CIDR Smoke",
-      "host": "cidr.local",
-      "upstream": "http://litewaf-access-smoke-upstream:80",
-      "mode": "protect",
-      "rules": [],
-      "policy": {
-        "id": 2,
-        "name": "CIDR smoke policy",
-        "risk_threshold": 1000,
-        "default_action": "block"
-      }
-    },
-    {
       "id": 3,
       "name": "Host Smoke",
       "host": "host-rule.local",
@@ -45,7 +31,21 @@
       }
     }
   ],
-  "access_lists": [],
+  "ip_access_index": {
+    "entries": {},
+    "exact": {
+      "allow": {},
+      "block": {}
+    },
+    "cidr": {
+      "allow": {},
+      "block": {}
+    },
+    "cidr_prefix_lengths": {
+      "allow": {},
+      "block": {}
+    }
+  },
   "rate_limits": [],
   "protection_rules": [
     {
@@ -124,23 +124,6 @@
       },
       "action": {
         "type": "rate-limit"
-      }
-    },
-    {
-      "id": 305,
-      "name": "CIDR block",
-      "module": "access-control",
-      "category": "access-control",
-      "site_id": 2,
-      "enabled": true,
-      "priority": 10,
-      "match": {
-        "target": "cidr",
-        "value": "0.0.0.0/0",
-        "methods": []
-      },
-      "action": {
-        "type": "block"
       }
     },
     {

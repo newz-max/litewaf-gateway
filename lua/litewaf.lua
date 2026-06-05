@@ -320,8 +320,10 @@ local function waf_event(site, data)
         method = ngx.req.get_method(),
         uri = ngx.var.request_uri,
         summary = bounded(data.summary or ""),
-        access_list_id = data.access_list_id or 0,
         rate_limit_id = data.rate_limit_id or 0,
+        ip_access_list_id = data.ip_access_list_id or 0,
+        ip_list_kind = data.ip_list_kind or "",
+        ip_list_target = data.ip_list_target or "",
         module = data.module or "",
         category = data.category or "",
         rule_name = data.rule_name or "",
@@ -464,78 +466,146 @@ local function ipv4_to_number(value)
     return a * 16777216 + b * 65536 + c * 256 + d
 end
 
-local function cidr_matches(ip, cidr)
-    local base, bits = string.match(cidr or "", "^([^/]+)/(%d+)$")
-    bits = tonumber(bits)
+local function number_to_ipv4(value)
+    value = tonumber(value)
+    if not value then
+        return nil
+    end
+    local a = math.floor(value / 16777216) % 256
+    local b = math.floor(value / 65536) % 256
+    local c = math.floor(value / 256) % 256
+    local d = value % 256
+    return string.format("%d.%d.%d.%d", a, b, c, d)
+end
+
+local function ipv4_network_key(ip, prefix)
     local ip_num = ipv4_to_number(ip)
-    local base_num = ipv4_to_number(base)
-    if not ip_num or not base_num or not bits or bits < 0 or bits > 32 then
-        return false
+    prefix = tonumber(prefix)
+    if not ip_num or not prefix or prefix < 0 or prefix > 32 then
+        return nil
     end
-    if bits == 0 then
-        return true
+    if prefix == 0 then
+        return "0.0.0.0"
     end
-    local mask = bit.lshift(0xffffffff, 32 - bits)
-    return bit.band(ip_num, mask) == bit.band(base_num, mask)
+    local block = 2 ^ (32 - prefix)
+    return number_to_ipv4(ip_num - (ip_num % block))
+end
+
+local function split_ipv6_groups(value)
+    local groups = {}
+    if value == "" then
+        return groups
+    end
+    for group in string.gmatch(value, "([^:]+)") do
+        table.insert(groups, group)
+    end
+    return groups
+end
+
+local function parse_ipv6_side(value)
+    local out = {}
+    for _, group in ipairs(split_ipv6_groups(value)) do
+        if group == "" then
+            return nil
+        end
+        local parsed = tonumber(group, 16)
+        if not parsed or parsed < 0 or parsed > 0xffff then
+            return nil
+        end
+        table.insert(out, parsed)
+    end
+    return out
+end
+
+local function ipv6_to_segments(value)
+    value = string.lower(tostring(value or ""))
+    value = string.gsub(value, "%%.*$", "")
+    if value == "" or string.find(value, ".", 1, true) then
+        return nil
+    end
+    local double = string.find(value, "::", 1, true)
+    local segments = {}
+    if double then
+        if string.find(string.sub(value, double + 2), "::", 1, true) then
+            return nil
+        end
+        local left = parse_ipv6_side(string.sub(value, 1, double - 1)) or {}
+        local right = parse_ipv6_side(string.sub(value, double + 2)) or {}
+        local zeros = 8 - #left - #right
+        if zeros < 1 then
+            return nil
+        end
+        for _, group in ipairs(left) do
+            table.insert(segments, group)
+        end
+        for _ = 1, zeros do
+            table.insert(segments, 0)
+        end
+        for _, group in ipairs(right) do
+            table.insert(segments, group)
+        end
+    else
+        segments = parse_ipv6_side(value)
+        if not segments or #segments ~= 8 then
+            return nil
+        end
+    end
+    if #segments ~= 8 then
+        return nil
+    end
+    return segments
+end
+
+local function ipv6_segments_key(segments)
+    return string.format("%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x",
+        segments[1], segments[2], segments[3], segments[4],
+        segments[5], segments[6], segments[7], segments[8])
+end
+
+local function ipv6_normalized_key(value)
+    local segments = ipv6_to_segments(value)
+    if not segments then
+        return nil
+    end
+    return ipv6_segments_key(segments)
+end
+
+local function ipv6_network_key(ip, prefix)
+    local segments = ipv6_to_segments(ip)
+    prefix = tonumber(prefix)
+    if not segments or not prefix or prefix < 0 or prefix > 128 then
+        return nil
+    end
+    local remaining = prefix
+    for i = 1, 8 do
+        if remaining >= 16 then
+            remaining = remaining - 16
+        elseif remaining <= 0 then
+            segments[i] = 0
+        else
+            local mask = bit.band(bit.lshift(0xffff, 16 - remaining), 0xffff)
+            segments[i] = bit.band(segments[i], mask)
+            remaining = 0
+        end
+    end
+    return ipv6_segments_key(segments)
+end
+
+local function normalize_client_ip(value)
+    local ip = tostring(value or "")
+    local num = ipv4_to_number(ip)
+    if num then
+        return number_to_ipv4(num), "ipv4"
+    end
+    local ipv6 = ipv6_normalized_key(ip)
+    if ipv6 then
+        return ipv6, "ipv6"
+    end
+    return ip, ""
 end
 
 local path_prefix_matches
 local methods_match
-
-local function access_list_matches(entry)
-    local target = entry.target or ""
-    local value = tostring(entry.value or "")
-    if value == "" then
-        return false
-    end
-
-    if target == "ip" then
-        return client_ip() == value
-    end
-
-    if target == "cidr" then
-        return cidr_matches(client_ip(), value)
-    end
-
-    if target == "uri" then
-        local operator = entry.match_operator or ""
-        if operator == "prefix" then
-            return path_prefix_matches(value, ngx.var.uri or "")
-        end
-        if operator == "exact" then
-            return (ngx.var.uri or "") == value
-        end
-        return string.find(ngx.var.uri or "", value, 1, true) ~= nil
-    end
-
-    if target == "ua" then
-        return string.find(ngx.var.http_user_agent or "", value, 1, true) ~= nil
-    end
-
-    if target == "header" then
-        local header_name = tostring(entry.header_name or "")
-        if header_name == "" then
-            return false
-        end
-        local headers = ngx.req.get_headers()
-        local header_value = tostring(headers[header_name] or headers[string.lower(header_name)] or "")
-        if entry.match_operator == "contains" then
-            return string.find(header_value, value, 1, true) ~= nil
-        end
-        return header_value == value
-    end
-
-    if target == "host" then
-        local host = host_without_port(ngx.var.host)
-        value = string.lower(value)
-        if entry.match_operator == "suffix" then
-            return host == value or string.sub(host, -#("." .. value)) == "." .. value
-        end
-        return host == value
-    end
-
-    return false
-end
 
 local function entry_for_site(entry, site)
     local site_id = tonumber(entry.site_id or 0) or 0
@@ -545,26 +615,96 @@ end
 local enforce_rate_limits
 local dynamic_ban_key
 
-local function enforce_access_lists(config, site)
-    for _, entry in ipairs(config.access_lists or {}) do
-        if entry_for_site(entry, site) and entry.kind == "whitelist" and access_list_matches(entry) then
-            return "allow", entry
+local function ip_index_entry(config, entry_id)
+    return (((config or {}).ip_access_index or {}).entries or {})[tostring(entry_id)]
+end
+
+local function exact_ip_lookup(index, kind, scope, ip_key)
+    local exact = ((index or {}).exact or {})[kind] or {}
+    local scoped = exact[scope] or {}
+    local entry_id = scoped[ip_key]
+    if entry_id then
+        return entry_id
+    end
+    return nil
+end
+
+local function cidr_ip_lookup(index, kind, scope, family, ip_key)
+    local cidr = (((index or {}).cidr or {})[kind] or {})[scope] or {}
+    local prefix_lengths = ((((index or {}).cidr_prefix_lengths or {})[kind] or {})[scope] or {})[family] or {}
+    local family_map = cidr[family] or {}
+    for _, prefix in ipairs(prefix_lengths) do
+        local network
+        if family == "ipv4" then
+            network = ipv4_network_key(ip_key, prefix)
+        elseif family == "ipv6" then
+            network = ipv6_network_key(ip_key, prefix)
+        end
+        local prefix_map = family_map[tostring(prefix)] or {}
+        local entry_id = network and prefix_map[network]
+        if entry_id then
+            return entry_id
         end
     end
+    return nil
+end
 
-    for _, entry in ipairs(config.access_lists or {}) do
-        if entry_for_site(entry, site) and entry.kind == "blacklist" and access_list_matches(entry) then
-            waf_event(site, {
-                event_type = "access-list",
-                action = entry.action or "block",
-                disposition = "blocked",
-                access_list_id = entry.id or 0,
-                summary = entry.name or entry.value or ""
-            })
-            return "block", entry
+local function emit_ip_access_event(site, entry, decision)
+    if not entry then
+        return
+    end
+    waf_event(site, {
+        event_type = "ip-access-list",
+        module = "ip-access-list",
+        category = "ip-access-list",
+        rule_id = entry.id or 0,
+        rule_name = entry.name or "",
+        target = entry.target or "",
+        normalized_value = entry.normalized_value or "",
+        action = decision,
+        disposition = decision == "allow" and "proxied" or "blocked",
+        ip_access_list_id = entry.id or 0,
+        ip_list_kind = entry.kind or decision,
+        ip_list_target = entry.target or "",
+        summary = entry.name or entry.normalized_value or ""
+    })
+end
+
+local function enforce_ip_access_lists(config, site)
+    local index = (config or {}).ip_access_index or {}
+    local ip_key, family = normalize_client_ip(client_ip())
+    if ip_key == "" or family == "" then
+        return nil, nil
+    end
+    local site_scope = "site:" .. tostring(site.id or 0)
+    local scopes = { site_scope, "global" }
+    local checks = {
+        { kind = "allow", decision = "allow", target = "exact" },
+        { kind = "block", decision = "block", target = "exact" },
+    }
+    for scope_index, scope in ipairs(scopes) do
+        for _, check in ipairs(checks) do
+            local entry_id = exact_ip_lookup(index, check.kind, scope, ip_key)
+            if entry_id then
+                local entry = ip_index_entry(config, entry_id)
+                emit_ip_access_event(site, entry, check.decision)
+                return check.decision, entry
+            end
+        end
+        if scope_index == 1 then
+            -- Site-specific exact decisions must override global exact decisions.
         end
     end
-
+    for _, scope in ipairs(scopes) do
+        for _, check in ipairs(checks) do
+            local entry_id = cidr_ip_lookup(index, check.kind, scope, family, ip_key)
+            if entry_id then
+                local entry = ip_index_entry(config, entry_id)
+                emit_ip_access_event(site, entry, check.decision)
+                return check.decision, entry
+            end
+        end
+    end
     return nil, nil
 end
 
@@ -589,10 +729,10 @@ local function access_control_rule_matches(rule, site)
     local target = tostring(match.target or "")
     local value = tostring(match.value or "")
     if target == "ip" then
-        return client_ip() == value
+        return false
     end
     if target == "cidr" then
-        return cidr_matches(client_ip(), value)
+        return false
     end
     if target == "path" then
         local path = tostring(match.path or value)
@@ -643,7 +783,7 @@ end
 local function enforce_access_control(config, site)
     local rules = enabled_access_control_rules(config)
     if #rules == 0 then
-        return enforce_access_lists(config, site)
+        return nil, nil
     end
     for _, rule in ipairs(rules) do
         if access_control_rule_matches(rule, site) then
@@ -662,7 +802,6 @@ local function enforce_access_control(config, site)
                 rule_name = rule.name or "",
                 action = action,
                 disposition = disposition,
-                access_list_id = rule.id or 0,
                 target = ((rule.match or {}).target) or "",
                 summary = access_control_summary(rule)
             })
@@ -2038,6 +2177,19 @@ function _M.access()
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     end
 
+    local ip_access_decision = enforce_ip_access_lists(config, site)
+    if ip_access_decision == "allow" then
+        ngx.ctx.disposition = "proxied"
+        return
+    end
+    if ip_access_decision == "block" then
+        ngx.ctx.disposition = "blocked"
+        ngx.status = ngx.HTTP_FORBIDDEN
+        ngx.header.content_type = "application/json"
+        ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf IP access list"}}')
+        return ngx.exit(ngx.HTTP_FORBIDDEN)
+    end
+
     local access_decision = enforce_access_control(config, site)
     if access_decision == "allow" then
         ngx.ctx.disposition = "proxied"
@@ -2047,7 +2199,7 @@ function _M.access()
         ngx.ctx.disposition = "blocked"
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
-        ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf access list"}}')
+        ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf access control"}}')
         return ngx.exit(ngx.HTTP_FORBIDDEN)
     end
 

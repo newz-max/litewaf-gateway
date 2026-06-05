@@ -41,7 +41,6 @@ try {
     admin_boundary = Invoke-SmokeRequest "$base/admin2"
     header = Invoke-SmokeRequest "$base/header" "example.local" @("X-LiteWaf-Block: yes")
     access_before_cc = Invoke-SmokeRequest "$base/access-before-cc"
-    cidr = Invoke-SmokeRequest "$base/" "cidr.local"
     host = Invoke-SmokeRequest "$base/" "host-rule.local"
   }
 
@@ -51,7 +50,6 @@ try {
     admin_boundary = "404"
     header = "403"
     access_before_cc = "403"
-    cidr = "403"
     host = "403"
   }
 
@@ -71,7 +69,6 @@ try {
       '"rule_name":"Admin path block"',
       '"rule_name":"Header block"',
       '"rule_name":"Access before CC"',
-      '"rule_name":"CIDR block"',
       '"rule_name":"Host suffix block"'
     )) {
     if (($logs -join "`n") -notmatch [regex]::Escape($pattern)) {

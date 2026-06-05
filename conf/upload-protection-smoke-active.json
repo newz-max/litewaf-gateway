@@ -48,8 +48,21 @@
       }
     }
   ],
-  "access_lists": [],
-  "rate_limits": [],
+  "ip_access_index": {
+    "entries": {},
+    "exact": {
+      "allow": {},
+      "block": {}
+    },
+    "cidr": {
+      "allow": {},
+      "block": {}
+    },
+    "cidr_prefix_lengths": {
+      "allow": {},
+      "block": {}
+    }
+  },  "rate_limits": [],
   "protection_rules": [
     {
       "id": 401,

@@ -1,0 +1,144 @@
+{
+  "version": "ip-access-list-smoke",
+  "generated_at": "2026-06-06T00:00:00Z",
+  "sites": [
+    {
+      "id": 1,
+      "name": "IP Access List Smoke",
+      "host": "example.local",
+      "upstream": "http://litewaf-ip-access-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [
+        {
+          "id": 801,
+          "name": "Attack rule behind IP allow",
+          "type": "sqli",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i)union\\s+select",
+          "score": 80,
+          "enabled": true,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "sqli",
+          "group": "SQL 注入防护",
+          "priority": 100
+        }
+      ],
+      "policy": {
+        "id": 1,
+        "name": "Smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    },
+    {
+      "id": 2,
+      "name": "CIDR Smoke",
+      "host": "cidr.local",
+      "upstream": "http://litewaf-ip-access-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [],
+      "policy": {
+        "id": 2,
+        "name": "CIDR smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    }
+  ],
+  "ip_access_index": {
+    "entries": {
+      "901": {
+        "id": 901,
+        "name": "Site exact allow",
+        "kind": "allow",
+        "target": "ip",
+        "normalized_value": "203.0.113.10",
+        "ip_family": "ipv4",
+        "prefix_length": 0,
+        "site_id": 1,
+        "priority": 10
+      },
+      "902": {
+        "id": 902,
+        "name": "Site exact block",
+        "kind": "block",
+        "target": "ip",
+        "normalized_value": "203.0.113.20",
+        "ip_family": "ipv4",
+        "prefix_length": 0,
+        "site_id": 1,
+        "priority": 20
+      },
+      "903": {
+        "id": 903,
+        "name": "Global CIDR block",
+        "kind": "block",
+        "target": "cidr",
+        "normalized_value": "198.51.100.0",
+        "ip_family": "ipv4",
+        "prefix_length": 24,
+        "site_id": 0,
+        "priority": 30
+      },
+      "904": {
+        "id": 904,
+        "name": "Site exact allow before CIDR",
+        "kind": "allow",
+        "target": "ip",
+        "normalized_value": "198.51.100.5",
+        "ip_family": "ipv4",
+        "prefix_length": 0,
+        "site_id": 1,
+        "priority": 5
+      }
+    },
+    "exact": {
+      "allow": {
+        "site:1": {
+          "203.0.113.10": "901",
+          "198.51.100.5": "904"
+        }
+      },
+      "block": {
+        "site:1": {
+          "203.0.113.20": "902"
+        }
+      }
+    },
+    "cidr": {
+      "allow": {},
+      "block": {
+        "global": {
+          "ipv4": {
+            "24": {
+              "198.51.100.0": "903"
+            }
+          }
+        }
+      }
+    },
+    "cidr_prefix_lengths": {
+      "allow": {},
+      "block": {
+        "global": {
+          "ipv4": [24]
+        }
+      }
+    }
+  },
+  "access_lists": [
+    {
+      "id": 999,
+      "name": "Legacy payload must be ignored",
+      "kind": "blacklist",
+      "target": "cidr",
+      "value": "0.0.0.0/0",
+      "action": "block",
+      "enabled": true
+    }
+  ],
+  "rate_limits": [],
+  "protection_rules": []
+}
