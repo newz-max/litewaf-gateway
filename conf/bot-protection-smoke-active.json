@@ -1,0 +1,222 @@
+{
+  "version": "bot-protection-smoke",
+  "generated_at": "2026-06-01T00:00:00Z",
+  "sites": [
+    {
+      "id": 1,
+      "name": "Bot Smoke",
+      "host": "example.local",
+      "upstream": "http://litewaf-bot-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [
+        {
+          "id": 301,
+          "name": "Managed SQLi after bot",
+          "type": "sqli",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i)union\\s+select",
+          "score": 80,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "sqli",
+          "group": "SQL 注入防护",
+          "priority": 100
+        }
+      ],
+      "policy": {
+        "id": 1,
+        "name": "Default",
+        "risk_threshold": 100,
+        "default_action": "block",
+        "normalization_enabled": true,
+        "normalization_decode_passes": 2,
+        "normalization_max_value_bytes": 4096,
+        "body_inspection_enabled": false,
+        "body_inspection_content_types": [],
+        "body_inspection_path_prefixes": [],
+        "body_inspection_max_bytes": 65536,
+        "oversized_body_action": "log-only",
+        "upload_inspection_enabled": false,
+        "upload_max_bytes": 10485760,
+        "upload_size_action": "log-only",
+        "dynamic_ban_enabled": false,
+        "dynamic_ban_duration_sec": 300,
+        "dynamic_ban_score_threshold": 200,
+        "dynamic_ban_trigger_count": 3,
+        "dynamic_ban_window_sec": 60
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 500,
+      "name": "Search Engine Bypass",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 40,
+      "match": {
+        "path": "/crawler",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "js-challenge",
+        "verify_ttl_sec": 300,
+        "failure_action": "block",
+        "search_engine_bypass": true
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 501,
+      "name": "Admin JS Challenge",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 80,
+      "match": {
+        "path": "/admin",
+        "path_match": "prefix",
+        "methods": [],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "js-challenge",
+        "verify_ttl_sec": 300,
+        "failure_action": "block"
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 504,
+      "name": "Captcha Challenge",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 75,
+      "match": {
+        "path": "/captcha",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "captcha",
+        "verify_ttl_sec": 300,
+        "failure_action": "block",
+        "failure_message": "Complete local verification",
+        "privacy_notice": "LiteWaf uses local challenge signals only"
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 505,
+      "name": "Behavior Score",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 76,
+      "match": {
+        "path": "/behavior",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "js-challenge",
+        "verify_ttl_sec": 300,
+        "failure_action": "block",
+        "behavior_enabled": true,
+        "behavior_threshold": 50
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 506,
+      "name": "Device Binding",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 77,
+      "match": {
+        "path": "/device",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "js-challenge",
+        "verify_ttl_sec": 300,
+        "failure_action": "block",
+        "device_binding": true
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 502,
+      "name": "Login Observe Challenge",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 90,
+      "match": {
+        "path": "/login",
+        "path_match": "exact",
+        "methods": ["POST"],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "js-challenge",
+        "verify_ttl_sec": 300,
+        "failure_action": "log-only"
+      },
+      "action": {
+        "type": "log-only"
+      }
+    },
+    {
+      "id": 503,
+      "name": "Bot before attack",
+      "module": "bot-protection",
+      "category": "challenge",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 70,
+      "match": {
+        "path": "/bot-before-attack",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "challenge": {
+        "mode": "js-challenge",
+        "verify_ttl_sec": 300,
+        "failure_action": "block"
+      },
+      "action": {
+        "type": "block"
+      }
+    }
+  ]
+}

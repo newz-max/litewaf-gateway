@@ -1,0 +1,37 @@
+{
+  "version": "litewaf-default-rules-v1",
+  "rules": [
+    {
+      "name": "LiteWaf SQLi baseline",
+      "type": "sqli",
+      "target": "args",
+      "action": "block",
+      "expression": "(?i)(union\\s+select|or\\s+1=1|sleep\\s*\\(|benchmark\\s*\\()",
+      "score": 80
+    },
+    {
+      "name": "LiteWaf XSS baseline",
+      "type": "xss",
+      "target": "args",
+      "action": "block",
+      "expression": "(?i)(<script|javascript:|onerror\\s*=|onload\\s*=)",
+      "score": 80
+    },
+    {
+      "name": "LiteWaf RCE baseline",
+      "type": "rce",
+      "target": "args",
+      "action": "block",
+      "expression": "(?i)(;\\s*(cat|curl|wget|bash|sh)\\b|\\|\\s*(bash|sh)\\b|\\$\\(|/bin/(bash|sh))",
+      "score": 90
+    },
+    {
+      "name": "LiteWaf normalized traversal baseline",
+      "type": "rce",
+      "target": "normalized_uri",
+      "action": "block",
+      "expression": "(?i)(\\.\\./|\\.\\.\\\\|/etc/passwd|/proc/self/environ)",
+      "score": 70
+    }
+  ]
+}

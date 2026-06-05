@@ -1,0 +1,165 @@
+{
+  "version": "access-control-smoke",
+  "generated_at": "2026-05-31T00:00:00Z",
+  "sites": [
+    {
+      "id": 1,
+      "name": "Access Control Smoke",
+      "host": "example.local",
+      "upstream": "http://litewaf-access-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [],
+      "policy": {
+        "id": 1,
+        "name": "Smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    },
+    {
+      "id": 2,
+      "name": "CIDR Smoke",
+      "host": "cidr.local",
+      "upstream": "http://litewaf-access-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [],
+      "policy": {
+        "id": 2,
+        "name": "CIDR smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    },
+    {
+      "id": 3,
+      "name": "Host Smoke",
+      "host": "host-rule.local",
+      "upstream": "http://litewaf-access-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [],
+      "policy": {
+        "id": 3,
+        "name": "Host smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 301,
+      "name": "Admin path block",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "target": "path",
+        "path": "/admin",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 302,
+      "name": "Header block",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 20,
+      "match": {
+        "target": "header",
+        "header_name": "X-LiteWaf-Block",
+        "value": "yes",
+        "operator": "contains",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 303,
+      "name": "Access before CC",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 30,
+      "match": {
+        "target": "path",
+        "path": "/access-before-cc",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 304,
+      "name": "CC after access control",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 40,
+      "match": {
+        "path": "/access-before-cc",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "client_ip_path",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 305,
+      "name": "CIDR block",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 2,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "target": "cidr",
+        "value": "0.0.0.0/0",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 306,
+      "name": "Host suffix block",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 3,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "target": "host",
+        "host": "host-rule.local",
+        "operator": "suffix",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "version": "attack-protection-smoke",
+  "generated_at": "2026-05-31T00:00:00Z",
+  "sites": [
+    {
+      "id": 1,
+      "name": "Smoke",
+      "host": "example.local",
+      "upstream": "http://litewaf-attack-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [
+        {
+          "id": 101,
+          "name": "Smoke SQLi",
+          "type": "sqli",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i)union\\s+select",
+          "score": 80,
+          "enabled": true,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "sqli",
+          "group": "SQL 注入防护",
+          "priority": 100
+        },
+        {
+          "id": 102,
+          "name": "Smoke XSS observe",
+          "type": "xss",
+          "target": "args",
+          "action": "log-only",
+          "expression": "(?i)<script",
+          "score": 80,
+          "enabled": true,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "xss",
+          "group": "XSS 防护",
+          "priority": 110
+        },
+        {
+          "id": 103,
+          "name": "Smoke RCE",
+          "type": "rce",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i);\\s*cat\\b",
+          "score": 90,
+          "enabled": true,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "rce",
+          "group": "RCE 防护",
+          "priority": 120
+        },
+        {
+          "id": 104,
+          "name": "Smoke traversal",
+          "type": "path-traversal",
+          "target": "normalized_path",
+          "action": "block",
+          "expression": "(?i)/etc/passwd",
+          "score": 70,
+          "enabled": true,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "path-traversal",
+          "group": "路径穿越防护",
+          "priority": 130
+        },
+        {
+          "id": 105,
+          "name": "Smoke disabled group",
+          "type": "xss",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i)disabledattack",
+          "score": 80,
+          "enabled": false,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "xss",
+          "group": "XSS 防护",
+          "priority": 110
+        }
+      ],
+      "policy": {
+        "id": 1,
+        "name": "Smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block",
+        "normalization_enabled": true,
+        "normalization_decode_passes": 2,
+        "normalization_max_value_bytes": 4096
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 201,
+      "name": "Smoke CC before attack",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "path": "/cc",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "client_ip_path",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    }
+  ]
+}

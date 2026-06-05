@@ -1,0 +1,143 @@
+{
+  "version": "upload-protection-smoke",
+  "generated_at": "2026-05-31T00:00:00Z",
+  "sites": [
+    {
+      "id": 1,
+      "name": "Upload Smoke",
+      "host": "example.local",
+      "upstream": "http://litewaf-upload-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [
+        {
+          "id": 301,
+          "name": "Managed SQLi after upload",
+          "type": "sqli",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i)union\\s+select",
+          "score": 80,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "sqli",
+          "group": "SQL 注入防护",
+          "priority": 100
+        }
+      ],
+      "policy": {
+        "id": 1,
+        "name": "Default",
+        "risk_threshold": 100,
+        "default_action": "block",
+        "normalization_enabled": true,
+        "normalization_decode_passes": 2,
+        "normalization_max_value_bytes": 4096,
+        "body_inspection_enabled": false,
+        "body_inspection_content_types": [],
+        "body_inspection_path_prefixes": [],
+        "body_inspection_max_bytes": 65536,
+        "oversized_body_action": "log-only",
+        "upload_inspection_enabled": true,
+        "upload_max_bytes": 10485760,
+        "upload_size_action": "log-only",
+        "dynamic_ban_enabled": false,
+        "dynamic_ban_duration_sec": 300,
+        "dynamic_ban_score_threshold": 200,
+        "dynamic_ban_trigger_count": 3,
+        "dynamic_ban_window_sec": 60
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 401,
+      "name": "Script upload block",
+      "module": "upload-protection",
+      "category": "upload",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 80,
+      "match": {
+        "path": "/upload",
+        "path_match": "prefix",
+        "methods": ["POST"],
+        "target": "upload"
+      },
+      "upload": {
+        "extensions": ["php", "jsp"],
+        "max_bytes": 0
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 402,
+      "name": "Avatar size block",
+      "module": "upload-protection",
+      "category": "upload",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 90,
+      "match": {
+        "path": "/avatar",
+        "path_match": "exact",
+        "methods": ["POST"],
+        "target": "upload"
+      },
+      "upload": {
+        "extensions": [],
+        "max_bytes": 64
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 403,
+      "name": "Upload observe",
+      "module": "upload-protection",
+      "category": "upload",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 100,
+      "match": {
+        "path": "/observe",
+        "path_match": "prefix",
+        "methods": ["POST"],
+        "target": "upload"
+      },
+      "upload": {
+        "extensions": ["exe"],
+        "max_bytes": 0
+      },
+      "action": {
+        "type": "log-only"
+      }
+    },
+    {
+      "id": 404,
+      "name": "Upload before attack",
+      "module": "upload-protection",
+      "category": "upload",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 70,
+      "match": {
+        "path": "/upload-before-attack",
+        "path_match": "exact",
+        "methods": ["POST"],
+        "target": "upload"
+      },
+      "upload": {
+        "extensions": ["php"],
+        "max_bytes": 0
+      },
+      "action": {
+        "type": "block"
+      }
+    }
+  ]
+}

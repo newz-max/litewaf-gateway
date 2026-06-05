@@ -1,0 +1,175 @@
+{
+  "version": "dynamic-protection-smoke",
+  "generated_at": "2026-06-01T00:00:00Z",
+  "sites": [
+    {
+      "id": 1,
+      "name": "Dynamic Protection Smoke",
+      "host": "example.local",
+      "upstream": "http://litewaf-dynamic-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [
+        {
+          "id": 701,
+          "name": "Managed SQLi after dynamic",
+          "type": "sqli",
+          "target": "args",
+          "action": "block",
+          "expression": "(?i)union\\s+select",
+          "score": 120,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "sqli",
+          "group": "SQL 注入防护",
+          "priority": 100
+        }
+      ],
+      "policy": {
+        "id": 1,
+        "name": "Default",
+        "risk_threshold": 100,
+        "default_action": "block",
+        "normalization_enabled": true,
+        "normalization_decode_passes": 2,
+        "normalization_max_value_bytes": 4096,
+        "body_inspection_enabled": false,
+        "body_inspection_content_types": [],
+        "body_inspection_path_prefixes": [],
+        "body_inspection_max_bytes": 65536,
+        "oversized_body_action": "log-only",
+        "upload_inspection_enabled": false,
+        "upload_max_bytes": 10485760,
+        "upload_size_action": "log-only",
+        "dynamic_ban_enabled": false,
+        "dynamic_ban_duration_sec": 300,
+        "dynamic_ban_score_threshold": 200,
+        "dynamic_ban_trigger_count": 3,
+        "dynamic_ban_window_sec": 60
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 601,
+      "name": "Admin Dynamic Token",
+      "module": "dynamic-protection",
+      "category": "dynamic-token",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 60,
+      "match": {
+        "path": "/admin",
+        "path_match": "prefix",
+        "methods": [],
+        "target": "path"
+      },
+      "dynamic": {
+        "mode": "dynamic-token",
+        "token_ttl_sec": 300,
+        "token_placement": "cookie",
+        "failure_action": "block"
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 602,
+      "name": "Login Observe Dynamic Token",
+      "module": "dynamic-protection",
+      "category": "dynamic-token",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 70,
+      "match": {
+        "path": "/login",
+        "path_match": "exact",
+        "methods": ["POST"],
+        "target": "path"
+      },
+      "dynamic": {
+        "mode": "dynamic-token",
+        "token_ttl_sec": 300,
+        "token_placement": "cookie",
+        "failure_action": "log-only"
+      },
+      "action": {
+        "type": "log-only"
+      }
+    },
+    {
+      "id": 603,
+      "name": "HTML Body Mutation",
+      "module": "dynamic-protection",
+      "category": "page-mutation",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 80,
+      "match": {
+        "path": "/",
+        "path_match": "prefix",
+        "methods": ["GET"],
+        "target": "path"
+      },
+      "dynamic": {
+        "mode": "page-mutation",
+        "mutation_marker": "body-end",
+        "mutation_max_bytes": 262144
+      },
+      "action": {
+        "type": "log-only"
+      }
+    },
+    {
+      "id": 604,
+      "name": "Checkout Waiting Room",
+      "module": "dynamic-protection",
+      "category": "waiting-room",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 50,
+      "match": {
+        "path": "/queue",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "dynamic": {
+        "mode": "waiting-room",
+        "queue_capacity": 1,
+        "admission_ttl_sec": 30,
+        "retry_interval_sec": 7,
+        "overflow_action": "waiting-room"
+      },
+      "action": {
+        "type": "waiting-room"
+      }
+    },
+    {
+      "id": 605,
+      "name": "Dynamic Before Attack",
+      "module": "dynamic-protection",
+      "category": "dynamic-token",
+      "site_id": 1,
+      "enabled": true,
+      "priority": 40,
+      "match": {
+        "path": "/dynamic-before-attack",
+        "path_match": "exact",
+        "methods": [],
+        "target": "path"
+      },
+      "dynamic": {
+        "mode": "dynamic-token",
+        "token_ttl_sec": 300,
+        "token_placement": "cookie",
+        "failure_action": "block"
+      },
+      "action": {
+        "type": "block"
+      }
+    }
+  ]
+}

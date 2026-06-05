@@ -1,0 +1,174 @@
+{
+  "version": "cc-advanced-smoke",
+  "generated_at": "2026-06-05T00:00:00Z",
+  "sites": [
+    {
+      "id": 9,
+      "name": "Advanced CC Smoke",
+      "host": "cc-advanced.local",
+      "upstream": "http://litewaf-cc-advanced-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [
+        {
+          "id": 901,
+          "name": "Attack frequency source",
+          "type": "custom",
+          "target": "args",
+          "action": "log-only",
+          "expression": "ccattack",
+          "score": 10,
+          "module": "attack-protection",
+          "category": "managed",
+          "attack_type": "sqli",
+          "group": "SQL injection",
+          "priority": 10
+        }
+      ],
+      "policy": {
+        "id": 9,
+        "name": "Advanced CC smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [
+    {
+      "id": 990,
+      "name": "Legacy compatibility limit",
+      "scope": "uri",
+      "match_value": "/legacy-cc",
+      "path_match": "prefix",
+      "methods": [],
+      "threshold": 1,
+      "window_sec": 60,
+      "action": "block",
+      "cc_action": "rate-limit",
+      "ban_duration_sec": 0,
+      "violation_threshold": 0,
+      "violation_window_sec": 0,
+      "site_id": 9
+    }
+  ],
+  "protection_rules": [
+    {
+      "id": 910,
+      "name": "Glob CC limit",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 9,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "path": "/api/*/login",
+        "path_match": "glob",
+        "methods": ["GET"]
+      },
+      "limit": {
+        "counter": "client_ip_path",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 911,
+      "name": "Session CC limit",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 9,
+      "enabled": true,
+      "priority": 20,
+      "match": {
+        "path": "/session",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "session",
+        "session_source": "cookie",
+        "session_name": "sid",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 912,
+      "name": "Device CC limit",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 9,
+      "enabled": true,
+      "priority": 30,
+      "match": {
+        "path": "/device",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "device",
+        "device_strategy": "coarse",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 913,
+      "name": "Not found CC limit",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 9,
+      "enabled": true,
+      "priority": 40,
+      "match": {
+        "path": "/missing",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "not_found_frequency",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 914,
+      "name": "Attack frequency CC limit",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 9,
+      "enabled": true,
+      "priority": 50,
+      "match": {
+        "path": "/attack",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "attack_frequency",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    }
+  ]
+}
