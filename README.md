@@ -54,6 +54,7 @@ Important environment variables:
 | `LITEWAF_METRICS_ENABLED` | `false` | Enables `/metrics` output when true |
 | `LITEWAF_CHALLENGE_SECRET` | empty | Bot verification signing secret |
 | `LITEWAF_DYNAMIC_SECRET` | empty | Dynamic protection signing secret |
+| `LITEWAF_DYNAMIC_BAN_CLEAR_INTERVAL` | `5` | Seconds between manual dynamic-ban clear feed polls; set `0` to disable polling |
 | `LITEWAF_SENSITIVE_HEADERS` | `authorization,cookie,set-cookie` | Headers excluded from log values |
 | `LITEWAF_LOG_VALUE_MAX_LEN` | `160` | Maximum logged header/value length |
 | `LITEWAF_REAL_IP_TRUSTED_CIDRS` | empty | Comma or space separated trusted proxy CIDRs for real client IP recovery |
@@ -63,6 +64,8 @@ Important environment variables:
 The repository includes `conf/active.json` as a bootstrap empty configuration and smoke-test configurations under `conf/*-smoke-active.json`.
 
 Leave `LITEWAF_REAL_IP_TRUSTED_CIDRS` empty for direct-client deployments. When LiteWaf is behind a trusted load balancer, CDN, host reverse proxy, or Docker bridge proxy path, set it to the immediate trusted proxy CIDR list, for example `172.16.0.0/12` for a Docker bridge validation environment. The gateway does not trust arbitrary `X-Forwarded-For` or `X-Real-IP` headers unless the peer address matches the configured trusted CIDRs.
+
+Manual dynamic-ban release is synchronized outside the request hot path. When `LITEWAF_INGESTION_URL`, `LITEWAF_INGESTION_TOKEN`, and `LITEWAF_DYNAMIC_BAN_CLEAR_INTERVAL` are configured, worker 0 polls `/api/v1/dynamic-bans/clears` with the gateway ingestion token, consumes increasing revisions, and deletes the matching local `site_id/client_ip` dynamic-ban key. Requests continue to use local shared dictionaries only; a manual release can take up to one poll interval to affect enforcement. Each applied release emits a bounded `dynamic_ban_clear` JSON log record.
 
 ## Smoke Validation
 
@@ -77,6 +80,7 @@ Additional smoke scripts cover access control, attack protection, bot protection
 
 ```powershell
 pwsh ./scripts/real-ip-smoke.ps1
+pwsh ./scripts/manual-unban-smoke.ps1
 ```
 
 ## Repository Status

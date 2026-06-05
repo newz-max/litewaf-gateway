@@ -1,0 +1,47 @@
+{
+  "version": "manual-unban-smoke",
+  "generated_at": "2026-06-06T00:00:00Z",
+  "sites": [
+    {
+      "id": 41,
+      "name": "Manual Unban Smoke",
+      "host": "manual-unban.local",
+      "upstream": "http://litewaf-manual-unban-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [],
+      "policy": {
+        "id": 41,
+        "name": "Manual unban smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 4101,
+      "name": "Manual unban target",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 41,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "path": "/ban",
+        "path_match": "exact",
+        "methods": []
+      },
+      "limit": {
+        "counter": "client_ip",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 120
+      },
+      "action": {
+        "type": "ban"
+      }
+    }
+  ]
+}

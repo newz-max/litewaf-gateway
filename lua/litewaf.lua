@@ -11,6 +11,7 @@ local sensitive_headers = os.getenv("LITEWAF_SENSITIVE_HEADERS") or "authorizati
 local max_summary_len = tonumber(os.getenv("LITEWAF_LOG_VALUE_MAX_LEN") or "160") or 160
 local challenge_secret = os.getenv("LITEWAF_CHALLENGE_SECRET") or ""
 local dynamic_secret = os.getenv("LITEWAF_DYNAMIC_SECRET") or ""
+local dynamic_ban_clear_interval = tonumber(os.getenv("LITEWAF_DYNAMIC_BAN_CLEAR_INTERVAL") or "5") or 5
 
 local sensitive_header_set = {}
 for header in string.gmatch(sensitive_headers, "([^,]+)") do
@@ -155,6 +156,53 @@ local function parse_ingestion_url(path)
     }
 end
 
+local function get_ingestion_json(path)
+    local target = parse_ingestion_url(path)
+    if not target then
+        return nil
+    end
+    local sock = ngx.socket.tcp()
+    sock:settimeout(1000)
+    local ok, err = sock:connect(target.host, target.port)
+    if not ok then
+        ngx.log(ngx.WARN, "litewaf dynamic ban clear connect failed: ", err)
+        return nil
+    end
+    local request = table.concat({
+        "GET ", target.path, " HTTP/1.0\r\n",
+        "Host: ", target.host, "\r\n",
+        "Authorization: Bearer ", ingestion_token, "\r\n",
+        "Accept: application/json\r\n",
+        "Connection: close\r\n\r\n"
+    })
+    local sent, send_err = sock:send(request)
+    if not sent then
+        ngx.log(ngx.WARN, "litewaf dynamic ban clear send failed: ", send_err)
+        sock:close()
+        return nil
+    end
+    local status = sock:receive("*l") or ""
+    if not string.find(status, " 200 ") then
+        ngx.log(ngx.WARN, "litewaf dynamic ban clear unexpected status: ", status)
+        sock:close()
+        return nil
+    end
+    while true do
+        local line = sock:receive("*l")
+        if not line or line == "" then
+            break
+        end
+    end
+    local body = sock:receive("*a") or ""
+    sock:close()
+    local decoded, decode_err = cjson.decode(body)
+    if not decoded then
+        ngx.log(ngx.WARN, "litewaf dynamic ban clear decode failed: ", decode_err)
+        return nil
+    end
+    return decoded
+end
+
 local function post_ingestion(premature, path, payload)
     if premature then
         return
@@ -203,7 +251,53 @@ local function schedule_ingestion(path, payload)
     end
 end
 
-local function log_json(level, payload)
+local log_json
+
+local function poll_dynamic_ban_clears(premature)
+    if premature then
+        return
+    end
+    if ingestion_url == "" or ingestion_token == "" then
+        return
+    end
+    local state = ngx.shared.litewaf_dynamic_ban_clear
+    local ban_dict = ngx.shared.litewaf_dynamic_ban
+    if not state or not ban_dict then
+        return
+    end
+    local since_revision = tonumber(state:get("last_revision") or 0) or 0
+    local decoded = get_ingestion_json("/api/v1/dynamic-bans/clears?since_revision=" .. tostring(since_revision) .. "&limit=100")
+    local max_revision = since_revision
+    for _, item in ipairs((decoded and decoded.items) or {}) do
+        local site_id = tonumber(item.site_id or 0) or 0
+        local client = tostring(item.client_ip or "")
+        local revision = tonumber(item.revision or 0) or 0
+        if site_id > 0 and client ~= "" and revision > since_revision then
+            local key = "ip:" .. tostring(site_id) .. ":" .. client
+            ban_dict:delete(key)
+            log_json(ngx.INFO, {
+                event = "dynamic_ban_clear",
+                site_id = site_id,
+                client_ip = client,
+                revision = revision,
+                result = item.status or "cleared",
+                summary = bounded(item.message or "manual dynamic ban clear applied")
+            })
+            if revision > max_revision then
+                max_revision = revision
+            end
+        end
+    end
+    if max_revision > since_revision then
+        state:set("last_revision", max_revision)
+    end
+    local ok, err = ngx.timer.at(dynamic_ban_clear_interval, poll_dynamic_ban_clears)
+    if not ok then
+        ngx.log(ngx.WARN, "litewaf dynamic ban clear timer failed: ", err)
+    end
+end
+
+log_json = function(level, payload)
     ngx.log(level, cjson.encode(payload))
 end
 
@@ -951,6 +1045,22 @@ local function create_dynamic_ban(site, reason, duration)
         ban_reason = reason,
         ban_duration_sec = duration
     })
+end
+
+function _M.init_worker()
+    if dynamic_ban_clear_interval <= 0 then
+        return
+    end
+    if ingestion_url == "" or ingestion_token == "" then
+        return
+    end
+    if ngx.worker and ngx.worker.id and ngx.worker.id() ~= 0 then
+        return
+    end
+    local ok, err = ngx.timer.at(0, poll_dynamic_ban_clears)
+    if not ok then
+        ngx.log(ngx.WARN, "litewaf dynamic ban clear initial timer failed: ", err)
+    end
 end
 
 local function list_contains_prefix(values, path)
