@@ -1,6 +1,6 @@
 # LiteWaf Gateway
 
-LiteWaf Gateway is the OpenResty data-plane component for LiteWaf. It loads published gateway configuration, proxies protected traffic to upstream services, applies WAF decisions on the hot path, and emits access, WAF event, and metrics data.
+LiteWaf Gateway is the source-available OpenResty data-plane component for LiteWaf. It loads published gateway configuration, proxies protected traffic to upstream services, applies WAF decisions on the hot path, and emits access, WAF event, and metrics data.
 
 Related repositories:
 
@@ -56,8 +56,13 @@ Important environment variables:
 | `LITEWAF_DYNAMIC_SECRET` | empty | Dynamic protection signing secret |
 | `LITEWAF_SENSITIVE_HEADERS` | `authorization,cookie,set-cookie` | Headers excluded from log values |
 | `LITEWAF_LOG_VALUE_MAX_LEN` | `160` | Maximum logged header/value length |
+| `LITEWAF_REAL_IP_TRUSTED_CIDRS` | empty | Comma or space separated trusted proxy CIDRs for real client IP recovery |
+| `LITEWAF_REAL_IP_HEADER` | `X-Forwarded-For` | Forwarded client IP header accepted from trusted proxies |
+| `LITEWAF_REAL_IP_RECURSIVE` | `on` | Enables recursive forwarded-header parsing for trusted proxy chains |
 
 The repository includes `conf/active.json` as a bootstrap empty configuration and smoke-test configurations under `conf/*-smoke-active.json`.
+
+Leave `LITEWAF_REAL_IP_TRUSTED_CIDRS` empty for direct-client deployments. When LiteWaf is behind a trusted load balancer, CDN, host reverse proxy, or Docker bridge proxy path, set it to the immediate trusted proxy CIDR list, for example `172.16.0.0/12` for a Docker bridge validation environment. The gateway does not trust arbitrary `X-Forwarded-For` or `X-Real-IP` headers unless the peer address matches the configured trusted CIDRs.
 
 ## Smoke Validation
 
@@ -68,8 +73,16 @@ docker build -t litewaf-gateway .
 pwsh ./scripts/smoke.ps1 -Image litewaf-gateway
 ```
 
-Additional smoke scripts cover access control, attack protection, bot protection, CC advanced counters, dynamic protection, migration compatibility, and upload protection.
+Additional smoke scripts cover access control, attack protection, bot protection, CC advanced counters, dynamic protection, migration compatibility, upload protection, and real client IP recovery:
+
+```powershell
+pwsh ./scripts/real-ip-smoke.ps1
+```
 
 ## Repository Status
 
 This repository contains the LiteWaf OpenResty gateway source and validation assets. API, dashboard, deployment documentation, and OpenSpec artifacts are maintained in their companion repositories/workspace.
+
+## License
+
+This repository is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, copying, distribution, and modification are permitted under that license. Any commercial use requires a separate written license or permission from the copyright holder.

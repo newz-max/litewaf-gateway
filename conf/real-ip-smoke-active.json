@@ -1,0 +1,127 @@
+{
+  "version": "real-ip-smoke",
+  "generated_at": "2026-06-05T00:00:00Z",
+  "sites": [
+    {
+      "id": 31,
+      "name": "Real IP Smoke",
+      "host": "real-ip.local",
+      "upstream": "http://litewaf-real-ip-smoke-upstream:80",
+      "mode": "protect",
+      "rules": [],
+      "policy": {
+        "id": 31,
+        "name": "Real IP smoke policy",
+        "risk_threshold": 1000,
+        "default_action": "block"
+      }
+    }
+  ],
+  "access_lists": [],
+  "rate_limits": [],
+  "protection_rules": [
+    {
+      "id": 3101,
+      "name": "Forwarded client IP block",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 31,
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "target": "ip",
+        "value": "198.51.100.10",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 3102,
+      "name": "Forwarded CIDR block",
+      "module": "access-control",
+      "category": "access-control",
+      "site_id": 31,
+      "enabled": true,
+      "priority": 20,
+      "match": {
+        "target": "cidr",
+        "value": "198.51.100.64/26",
+        "methods": []
+      },
+      "action": {
+        "type": "block"
+      }
+    },
+    {
+      "id": 3103,
+      "name": "Forwarded client IP CC",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 31,
+      "enabled": true,
+      "priority": 30,
+      "match": {
+        "path": "/cc",
+        "path_match": "exact",
+        "methods": []
+      },
+      "limit": {
+        "counter": "client_ip",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 3104,
+      "name": "Forwarded client IP path CC",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 31,
+      "enabled": true,
+      "priority": 40,
+      "match": {
+        "path": "/cc-path",
+        "path_match": "prefix",
+        "methods": []
+      },
+      "limit": {
+        "counter": "client_ip_path",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 0
+      },
+      "action": {
+        "type": "rate-limit"
+      }
+    },
+    {
+      "id": 3105,
+      "name": "Forwarded client IP ban",
+      "module": "cc-protection",
+      "category": "rate-limit",
+      "site_id": 31,
+      "enabled": true,
+      "priority": 50,
+      "match": {
+        "path": "/ban",
+        "path_match": "exact",
+        "methods": []
+      },
+      "limit": {
+        "counter": "client_ip",
+        "threshold": 1,
+        "window_sec": 60,
+        "ban_duration_sec": 60
+      },
+      "action": {
+        "type": "ban"
+      }
+    }
+  ]
+}

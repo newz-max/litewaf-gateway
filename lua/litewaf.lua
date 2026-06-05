@@ -207,6 +207,10 @@ local function log_json(level, payload)
     ngx.log(level, cjson.encode(payload))
 end
 
+local function client_ip()
+    return ngx.var.remote_addr or ngx.var.realip_remote_addr or ""
+end
+
 local function waf_event(site, data)
     local payload = {
         event = "waf_event",
@@ -218,7 +222,7 @@ local function waf_event(site, data)
         target = data.target or "",
         action = data.action or "",
         disposition = data.disposition or "observed",
-        client_ip = ngx.var.remote_addr,
+        client_ip = client_ip(),
         method = ngx.req.get_method(),
         uri = ngx.var.request_uri,
         summary = bounded(data.summary or ""),
@@ -392,11 +396,11 @@ local function access_list_matches(entry)
     end
 
     if target == "ip" then
-        return ngx.var.remote_addr == value
+        return client_ip() == value
     end
 
     if target == "cidr" then
-        return cidr_matches(ngx.var.remote_addr, value)
+        return cidr_matches(client_ip(), value)
     end
 
     if target == "uri" then
@@ -491,10 +495,10 @@ local function access_control_rule_matches(rule, site)
     local target = tostring(match.target or "")
     local value = tostring(match.value or "")
     if target == "ip" then
-        return ngx.var.remote_addr == value
+        return client_ip() == value
     end
     if target == "cidr" then
-        return cidr_matches(ngx.var.remote_addr, value)
+        return cidr_matches(client_ip(), value)
     end
     if target == "path" then
         local path = tostring(match.path or value)
@@ -587,7 +591,7 @@ local function rate_limit_key(rule, site)
     if scope == "site" then
         return table.concat({ "site", site.id or 0, rule.id or 0 }, ":")
     end
-    return table.concat({ "ip", site.id or 0, rule.id or 0, ngx.var.remote_addr or "" }, ":")
+    return table.concat({ "ip", site.id or 0, rule.id or 0, client_ip() }, ":")
 end
 
 path_prefix_matches = function(prefix, uri)
@@ -671,7 +675,7 @@ local function cc_rate_limit_key(rule, site)
     local limit = rule.limit or {}
     local counter = tostring(limit.counter or "client_ip")
     if counter == "client_ip_path" then
-        return table.concat({ "cc", "client_ip_path", site.id or 0, rule.id or 0, ngx.var.remote_addr or "", ngx.var.uri or "" }, ":")
+        return table.concat({ "cc", "client_ip_path", site.id or 0, rule.id or 0, client_ip(), ngx.var.uri or "" }, ":")
     end
     if counter == "global" then
         return table.concat({ "cc", "global", site.id or 0, rule.id or 0 }, ":")
@@ -683,12 +687,12 @@ local function cc_rate_limit_key(rule, site)
         return table.concat({ "cc", "device", site.id or 0, rule.id or 0, cc_device_value() }, ":")
     end
     if counter == "not_found_frequency" then
-        return table.concat({ "cc", "not_found_frequency", site.id or 0, rule.id or 0, ngx.var.remote_addr or "", ngx.var.uri or "" }, ":")
+        return table.concat({ "cc", "not_found_frequency", site.id or 0, rule.id or 0, client_ip(), ngx.var.uri or "" }, ":")
     end
     if counter == "attack_frequency" then
-        return table.concat({ "cc", "attack_frequency", site.id or 0, rule.id or 0, ngx.var.remote_addr or "" }, ":")
+        return table.concat({ "cc", "attack_frequency", site.id or 0, rule.id or 0, client_ip() }, ":")
     end
-    return table.concat({ "cc", "client_ip", site.id or 0, rule.id or 0, ngx.var.remote_addr or "" }, ":")
+    return table.concat({ "cc", "client_ip", site.id or 0, rule.id or 0, client_ip() }, ":")
 end
 
 local function enabled_cc_rules(config)
@@ -836,7 +840,7 @@ local function rate_limit_matches(rule, site)
         return true
     end
     if match_value ~= "" then
-        return ngx.var.remote_addr == match_value
+        return client_ip() == match_value
     end
     return true
 end
@@ -867,7 +871,7 @@ enforce_rate_limits = function(config, site)
                         if violations >= violation_threshold then
                             local ban_dict = ngx.shared.litewaf_dynamic_ban
                             if ban_dict then
-                                ban_dict:set("ip:" .. tostring(site.id or 0) .. ":" .. tostring(ngx.var.remote_addr or ""), "rate-limit:" .. tostring(rule.id or 0), ban_duration)
+                                ban_dict:set("ip:" .. tostring(site.id or 0) .. ":" .. client_ip(), "rate-limit:" .. tostring(rule.id or 0), ban_duration)
                                 ban_created = true
                             end
                         end
@@ -904,7 +908,7 @@ enforce_rate_limits = function(config, site)
 end
 
 dynamic_ban_key = function(site)
-    return "ip:" .. tostring(site.id or 0) .. ":" .. tostring(ngx.var.remote_addr or "")
+    return "ip:" .. tostring(site.id or 0) .. ":" .. client_ip()
 end
 
 local function enforce_dynamic_ban(site)
@@ -1188,7 +1192,7 @@ local function bot_signature(secret, site, rule, expires)
     local base = table.concat({
         tostring(site.id or 0),
         tostring(rule.id or 0),
-        tostring(ngx.var.remote_addr or ""),
+        client_ip(),
         tostring(expires or 0),
         bot_device_signal(rule)
     }, ":")
@@ -1207,7 +1211,7 @@ local function bot_captcha_signature(config, site, rule, expires, answer)
     local base = table.concat({
         tostring(site.id or 0),
         tostring(rule.id or 0),
-        tostring(ngx.var.remote_addr or ""),
+        client_ip(),
         tostring(expires or 0),
         tostring(answer or 0),
         bot_device_signal(rule)
@@ -1577,7 +1581,7 @@ local function dynamic_signature(secret, site, rule, expires, purpose)
         tostring(purpose or "token"),
         tostring(site.id or 0),
         tostring(rule.id or 0),
-        tostring(ngx.var.remote_addr or ""),
+        client_ip(),
         tostring(expires or 0)
     }, ":")
     return ngx.encode_base64(ngx.hmac_sha1(secret, base))
@@ -1897,6 +1901,7 @@ function _M.access()
     ngx.ctx.started_at = ngx.now()
     ngx.ctx.disposition = "proxied"
     ensure_request_id()
+    ngx.var.litewaf_client_ip = client_ip()
     local config = load_config()
     local site = find_site(config, ngx.var.host)
     if not site then
@@ -2210,7 +2215,7 @@ function _M.log()
         status = status,
         upstream_status = tonumber(ngx.var.upstream_status) or 0,
         duration_ms = math.floor((ngx.now() - started_at) * 1000),
-        client_ip = ngx.var.remote_addr,
+        client_ip = client_ip(),
         user_agent = ngx.var.http_user_agent,
         disposition = disposition
     }
