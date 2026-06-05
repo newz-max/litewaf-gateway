@@ -4,8 +4,9 @@ LiteWaf Gateway is the OpenResty data-plane component for LiteWaf. It loads publ
 
 Related repositories:
 
-- API and project docs: <https://github.com/newz-max/litewaf-api>
-- Dashboard: <https://github.com/newz-max/litewaf-dashboard>
+- API and project docs: [litewaf-api](https://github.com/newz-max/litewaf-api)
+- Dashboard: [litewaf-dashboard](https://github.com/newz-max/litewaf-dashboard)
+- OpenResty data-plane gateway: [litewaf-gateway](https://github.com/newz-max/litewaf-gateway)
 
 ## Runtime Scope
 
