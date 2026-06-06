@@ -4,6 +4,8 @@ set -eu
 realip_conf="${LITEWAF_REAL_IP_CONF:-/usr/local/openresty/nginx/conf/litewaf-realip.conf}"
 listener_dir="${LITEWAF_LISTENER_DIR:-/etc/litewaf/listeners}"
 reload_state_file="${LITEWAF_RELOAD_STATE_FILE:-/var/lib/litewaf/runtime/reload-status.json}"
+runtime_uid="${LITEWAF_RUNTIME_UID:-999}"
+runtime_gid="${LITEWAF_RUNTIME_GID:-999}"
 trusted_cidrs="${LITEWAF_REAL_IP_TRUSTED_CIDRS:-}"
 realip_header="${LITEWAF_REAL_IP_HEADER:-X-Forwarded-For}"
 realip_recursive="${LITEWAF_REAL_IP_RECURSIVE:-on}"
@@ -13,6 +15,8 @@ mkdir -p "$listener_dir"
 mkdir -p "$(dirname "$reload_state_file")"
 : > "$realip_conf"
 : > "$listener_dir/default.conf"
+chown -R "$runtime_uid:$runtime_gid" "$listener_dir"
+chmod -R u+rwX,go+rX "$listener_dir"
 if [ ! -f "$reload_state_file" ]; then
   printf '{"status":"not_run","message":"reload has not run","updated_at":""}\n' > "$reload_state_file"
 fi
