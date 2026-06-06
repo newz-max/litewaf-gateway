@@ -32,13 +32,13 @@ local function load_config()
     local content, err = read_file(config_path)
     if not content then
         ngx.log(ngx.ERR, "litewaf config read failed: ", err)
-        return { sites = {} }
+        return { applications = {}, sites = {} }
     end
 
     local decoded, json_err = cjson.decode(content)
     if not decoded then
         ngx.log(ngx.ERR, "litewaf config decode failed: ", json_err)
-        return { sites = {} }
+        return { applications = {}, sites = {} }
     end
 
     return decoded
@@ -53,8 +53,56 @@ end
 
 local function find_site(config, host)
     local normalized = host_without_port(host)
+    local request_port = tonumber(ngx.var.server_port or 0) or 0
+    local request_scheme = string.lower(ngx.var.scheme or "http")
+    for _, app in ipairs(config.applications or {}) do
+        if app.enabled ~= false then
+            local host_matched = false
+            for _, app_host in ipairs(app.hosts or {}) do
+                if string.lower(tostring(app_host or "")) == normalized then
+                    host_matched = true
+                    break
+                end
+            end
+            if host_matched then
+                for _, listener in ipairs(app.listeners or {}) do
+                    local listener_port = tonumber(listener.port or 0) or 0
+                    local listener_protocol = string.lower(listener.protocol or "http")
+                    if listener.enabled ~= false and listener_port == request_port and listener_protocol == request_scheme then
+                        local upstream = ""
+                        for _, candidate in ipairs(app.upstreams or {}) do
+                            if candidate.enabled ~= false and tostring(candidate.url or "") ~= "" then
+                                upstream = tostring(candidate.url)
+                                break
+                            end
+                        end
+                        if upstream ~= "" then
+                            ngx.ctx.application_id = app.id or 0
+                            ngx.ctx.listener_port = listener_port
+                            ngx.ctx.listener_scheme = listener_protocol
+                            ngx.ctx.application_host = normalized
+                            return {
+                                id = app.id,
+                                name = app.name,
+                                host = normalized,
+                                upstream = upstream,
+                                mode = app.mode,
+                                enabled = app.enabled,
+                                rules = app.rules or {},
+                                policy = app.policy or {}
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
     for _, site in ipairs(config.sites or {}) do
         if string.lower(site.host or "") == normalized then
+            ngx.ctx.application_id = site.id or 0
+            ngx.ctx.listener_port = request_port
+            ngx.ctx.listener_scheme = request_scheme
+            ngx.ctx.application_host = normalized
             return site
         end
     end
@@ -269,15 +317,17 @@ local function poll_dynamic_ban_clears(premature)
     local decoded = get_ingestion_json("/api/v1/dynamic-bans/clears?since_revision=" .. tostring(since_revision) .. "&limit=100")
     local max_revision = since_revision
     for _, item in ipairs((decoded and decoded.items) or {}) do
-        local site_id = tonumber(item.site_id or 0) or 0
+        local application_id = tonumber(item.application_id or item.site_id or 0) or 0
         local client = tostring(item.client_ip or "")
         local revision = tonumber(item.revision or 0) or 0
-        if site_id > 0 and client ~= "" and revision > since_revision then
-            local key = "ip:" .. tostring(site_id) .. ":" .. client
+        if application_id > 0 and client ~= "" and revision > since_revision then
+            local key = "ip:" .. tostring(application_id) .. ":" .. client
             ban_dict:delete(key)
             log_json(ngx.INFO, {
                 event = "dynamic_ban_clear",
-                site_id = site_id,
+                application_id = application_id,
+                listener_port = tonumber(item.listener_port or 0) or 0,
+                scheme = item.scheme or "",
                 client_ip = client,
                 revision = revision,
                 result = item.status or "cleared",
@@ -309,7 +359,12 @@ local function waf_event(site, data)
     local payload = {
         event = "waf_event",
         request_id = ensure_request_id(),
-        site_id = site and site.id or 0,
+        application_id = ngx.ctx.application_id or (site and site.id or 0),
+        application_name = site and site.name or "",
+        listener_port = ngx.ctx.listener_port or tonumber(ngx.var.server_port or 0) or 0,
+        scheme = ngx.ctx.listener_scheme or ngx.var.scheme or "",
+        host = ngx.ctx.application_host or host_without_port(ngx.var.host),
+        upstream = site and site.upstream or "",
         event_type = data.event_type or "rule",
         rule_id = data.rule_id or 0,
         rule_type = data.rule_type or "",
@@ -349,7 +404,7 @@ local function waf_event(site, data)
     }
     log_json(ngx.WARN, payload)
     schedule_ingestion("/api/v1/ingest/waf-events", payload)
-    increment_metric("waf_matches", { payload.site_id, payload.event_type, payload.disposition })
+    increment_metric("waf_matches", { payload.application_id, payload.event_type, payload.disposition })
 end
 
 local function policy_for_site(site)
@@ -2470,8 +2525,12 @@ function _M.log()
     local payload = {
         event = "access_log",
         request_id = ensure_request_id(),
-        site_id = site.id or 0,
+        application_id = ngx.ctx.application_id or site.id or 0,
+        application_name = site.name or "",
+        listener_port = ngx.ctx.listener_port or tonumber(ngx.var.server_port or 0) or 0,
+        scheme = ngx.ctx.listener_scheme or ngx.var.scheme or "",
         host = host_without_port(ngx.var.host),
+        upstream = site.upstream or "",
         method = ngx.req.get_method(),
         uri = ngx.var.request_uri,
         status = status,
@@ -2483,9 +2542,9 @@ function _M.log()
     }
     log_json(ngx.INFO, payload)
     schedule_ingestion("/api/v1/ingest/access-logs", payload)
-    increment_metric("requests", { payload.site_id, disposition, payload.status })
+    increment_metric("requests", { payload.application_id, disposition, payload.status })
     if disposition == "blocked" or disposition == "rejected" or disposition == "rate-limited" then
-        increment_metric("blocked_requests", { payload.site_id, disposition })
+        increment_metric("blocked_requests", { payload.application_id, disposition })
     end
 end
 
@@ -2517,11 +2576,11 @@ function _M.metrics()
                 table.insert(parts, part)
             end
             if parts[1] == "requests" then
-                ngx.say(string.format('litewaf_gateway_requests_total{site_id="%s",disposition="%s",status="%s"} %d', parts[2] or "", parts[3] or "", parts[4] or "", value))
+                ngx.say(string.format('litewaf_gateway_requests_total{application_id="%s",disposition="%s",status="%s"} %d', parts[2] or "", parts[3] or "", parts[4] or "", value))
             elseif parts[1] == "blocked_requests" then
-                ngx.say(string.format('litewaf_gateway_blocked_requests_total{site_id="%s",disposition="%s"} %d', parts[2] or "", parts[3] or "", value))
+                ngx.say(string.format('litewaf_gateway_blocked_requests_total{application_id="%s",disposition="%s"} %d', parts[2] or "", parts[3] or "", value))
             elseif parts[1] == "waf_matches" then
-                ngx.say(string.format('litewaf_gateway_waf_matches_total{site_id="%s",event_type="%s",disposition="%s"} %d', parts[2] or "", parts[3] or "", parts[4] or "", value))
+                ngx.say(string.format('litewaf_gateway_waf_matches_total{application_id="%s",event_type="%s",disposition="%s"} %d', parts[2] or "", parts[3] or "", parts[4] or "", value))
             end
         end
     end

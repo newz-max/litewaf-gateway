@@ -82,7 +82,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        body = json.dumps({"items": [{"site_id": 41, "client_ip": "$clearIp", "status": "cleared", "revision": 1, "message": "manual smoke clear"}]}).encode()
+        body = json.dumps({"items": [{"application_id": 41, "listener_port": 8080, "scheme": "http", "client_ip": "$clearIp", "status": "cleared", "revision": 1, "message": "manual smoke clear"}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

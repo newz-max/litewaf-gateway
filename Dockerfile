@@ -6,8 +6,9 @@ COPY litewaf-realip.conf /usr/local/openresty/nginx/conf/litewaf-realip.conf
 COPY lua /usr/local/openresty/nginx/lua
 COPY conf /etc/litewaf
 COPY docker-entrypoint.sh /usr/local/bin/litewaf-entrypoint.sh
+COPY litewaf-reload.sh /usr/local/bin/litewaf-reload.sh
 
-RUN chmod +x /usr/local/bin/litewaf-entrypoint.sh
+RUN chmod +x /usr/local/bin/litewaf-entrypoint.sh /usr/local/bin/litewaf-reload.sh
 
 EXPOSE 8080
 
