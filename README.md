@@ -8,6 +8,8 @@ Related repositories:
 - Dashboard: [litewaf-dashboard](https://github.com/newz-max/litewaf-dashboard)
 - OpenResty data-plane gateway: [litewaf-gateway](https://github.com/newz-max/litewaf-gateway)
 
+Public API, deployment, rule, and operator documentation is maintained in the API repository. Start from `doc/文档索引.md`; day-to-day site creation, publishing, gateway verification, logs, and rollback are covered in `doc/使用说明.md`.
+
 ## Runtime Scope
 
 - OpenResty + LuaJIT reverse proxy.
@@ -66,6 +68,8 @@ The repository includes `conf/active.json` as a bootstrap empty configuration an
 Leave `LITEWAF_REAL_IP_TRUSTED_CIDRS` empty for direct-client deployments. When LiteWaf is behind a trusted load balancer, CDN, host reverse proxy, or Docker bridge proxy path, set it to the immediate trusted proxy CIDR list, for example `172.16.0.0/12` for a Docker bridge validation environment. The gateway does not trust arbitrary `X-Forwarded-For` or `X-Real-IP` headers unless the peer address matches the configured trusted CIDRs.
 
 Manual dynamic-ban release is synchronized outside the request hot path. When `LITEWAF_INGESTION_URL`, `LITEWAF_INGESTION_TOKEN`, and `LITEWAF_DYNAMIC_BAN_CLEAR_INTERVAL` are configured, worker 0 polls `/api/v1/dynamic-bans/clears` with the gateway ingestion token, consumes increasing revisions, and deletes the matching local `site_id/client_ip` dynamic-ban key. Requests continue to use local shared dictionaries only; a manual release can take up to one poll interval to affect enforcement. Each applied release emits a bounded `dynamic_ban_clear` JSON log record.
+
+The gateway only enforces the active published configuration file. Creating or editing sites, rules, policies, IP lists, or protection modules in the control plane does not affect this repository's runtime until the API publishes a new release and writes the updated active config.
 
 ## Smoke Validation
 
