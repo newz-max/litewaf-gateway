@@ -4,6 +4,7 @@ set -eu
 realip_conf="${LITEWAF_REAL_IP_CONF:-/usr/local/openresty/nginx/conf/litewaf-realip.conf}"
 listener_dir="${LITEWAF_LISTENER_DIR:-/etc/litewaf/listeners}"
 reload_state_file="${LITEWAF_RELOAD_STATE_FILE:-/var/lib/litewaf/runtime/reload-status.json}"
+reload_watch_enabled="${LITEWAF_RELOAD_WATCH_ENABLED:-true}"
 runtime_uid="${LITEWAF_RUNTIME_UID:-999}"
 runtime_gid="${LITEWAF_RUNTIME_GID:-999}"
 trusted_cidrs="${LITEWAF_REAL_IP_TRUSTED_CIDRS:-}"
@@ -59,5 +60,17 @@ if [ "$normalized_cidrs" != "" ]; then
     echo "set_real_ip_from $cidr;" >> "$realip_conf"
   done
 fi
+
+case "$(printf '%s' "$reload_watch_enabled" | tr '[:upper:]' '[:lower:]')" in
+  1|true|yes|on)
+    /usr/local/bin/litewaf-reload-watch.sh &
+    ;;
+  0|false|no|off)
+    ;;
+  *)
+    echo "invalid LITEWAF_RELOAD_WATCH_ENABLED: $reload_watch_enabled" >&2
+    exit 1
+    ;;
+esac
 
 exec "$@"

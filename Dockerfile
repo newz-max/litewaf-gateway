@@ -7,8 +7,9 @@ COPY lua /usr/local/openresty/nginx/lua
 COPY conf /etc/litewaf
 COPY docker-entrypoint.sh /usr/local/bin/litewaf-entrypoint.sh
 COPY litewaf-reload.sh /usr/local/bin/litewaf-reload.sh
+COPY litewaf-reload-watch.sh /usr/local/bin/litewaf-reload-watch.sh
 
-RUN chmod +x /usr/local/bin/litewaf-entrypoint.sh /usr/local/bin/litewaf-reload.sh
+RUN chmod +x /usr/local/bin/litewaf-entrypoint.sh /usr/local/bin/litewaf-reload.sh /usr/local/bin/litewaf-reload-watch.sh
 
 EXPOSE 8080
 
