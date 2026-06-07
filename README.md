@@ -1,6 +1,6 @@
 # LiteWaf Gateway
 
-LiteWaf Gateway is the source-available OpenResty data-plane component for LiteWaf. It loads published gateway configuration, proxies protected traffic to upstream services, applies WAF decisions on the hot path, and emits access, WAF event, and metrics data.
+LiteWaf Gateway is the open-source OpenResty data-plane component for LiteWaf. It loads published gateway configuration, proxies protected traffic to upstream services, applies WAF decisions on the hot path, and emits access, WAF event, and metrics data.
 
 Related repositories:
 
@@ -96,4 +96,4 @@ This repository contains the LiteWaf OpenResty gateway source and validation ass
 
 ## License
 
-This repository is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, copying, distribution, and modification are permitted under that license. Any commercial use requires a separate written license or permission from the copyright holder.
+This repository is licensed under the [Apache License 2.0](LICENSE). You may use, copy, modify, distribute, and use the project commercially under that license.
