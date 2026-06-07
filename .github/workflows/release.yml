@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  package-and-release:
+    name: Package and publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate tag version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME}"
+          APP_VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [ -z "${APP_VERSION}" ]; then
+            echo "Cannot read gateway version from VERSION" >&2
+            exit 1
+          fi
+          if [ "${TAG_VERSION}" != "${APP_VERSION}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match gateway version ${APP_VERSION}" >&2
+            exit 1
+          fi
+          echo "LITEWAF_VERSION=${APP_VERSION}" >> "${GITHUB_ENV}"
+
+      - name: Validate shell scripts
+        run: |
+          test -x docker-entrypoint.sh || chmod +x docker-entrypoint.sh
+          test -x litewaf-reload.sh || chmod +x litewaf-reload.sh
+          test -x litewaf-reload-watch.sh || chmod +x litewaf-reload-watch.sh
+
+      - name: Collect fallback deployment files
+        run: |
+          mkdir -p release/litewaf-gateway
+          cp -r conf release/litewaf-gateway/
+          cp -r lua release/litewaf-gateway/
+          cp nginx.conf litewaf-realip.conf release/litewaf-gateway/
+          cp docker-entrypoint.sh litewaf-reload.sh litewaf-reload-watch.sh release/litewaf-gateway/
+          cp README.md LICENSE release/litewaf-gateway/
+          cat > release/litewaf-gateway/VERSION <<EOF
+          ${LITEWAF_VERSION}
+          EOF
+          cat > release/litewaf-gateway/RELEASE_PACKAGE.md <<'EOF'
+          # LiteWaf Gateway release package
+
+          This package is a non-Docker fallback deployment asset. It contains the
+          OpenResty nginx configuration, LiteWaf Lua runtime files, default gateway
+          configuration, and reload helper scripts. It does not replace or modify
+          the Docker image publishing path.
+
+          Use these files with a compatible OpenResty installation and keep the
+          active gateway config path writable by the account that runs OpenResty.
+          EOF
+
+      - name: Pack release asset
+        run: |
+          mkdir -p release-assets
+          tar -czf "release-assets/litewaf-gateway-${GITHUB_REF_NAME}.tar.gz" -C release litewaf-gateway
+          cd release-assets
+          sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Create GitHub Release
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" release-assets/* \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
