@@ -355,6 +355,12 @@ local function client_ip()
     return ngx.var.remote_addr or ngx.var.realip_remote_addr or ""
 end
 
+local function set_denial(disposition, reason_code, reason)
+    ngx.ctx.disposition = disposition
+    ngx.ctx.denial_reason_code = reason_code or ""
+    ngx.ctx.denial_reason = bounded(reason or reason_code or "")
+end
+
 local function waf_event(site, data)
     local payload = {
         event = "waf_event",
@@ -2209,7 +2215,7 @@ function _M.access()
     local config = load_config()
     local site = find_site(config, ngx.var.host)
     if not site then
-        ngx.ctx.disposition = "rejected"
+        set_denial("rejected", "unknown-host", "site not configured")
         ngx.status = ngx.HTTP_NOT_FOUND
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"not_found","message":"site not configured"}}')
@@ -2225,7 +2231,7 @@ function _M.access()
     end
 
     if enforce_dynamic_ban(site) == "block" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "dynamic-ban", "temporarily banned by LiteWaf")
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"forbidden","message":"temporarily banned by LiteWaf"}}')
@@ -2238,7 +2244,7 @@ function _M.access()
         return
     end
     if ip_access_decision == "block" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "ip-access-list", "blocked by LiteWaf IP access list")
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf IP access list"}}')
@@ -2251,7 +2257,7 @@ function _M.access()
         return
     end
     if access_decision == "block" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "access-control", "blocked by LiteWaf access control")
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf access control"}}')
@@ -2269,7 +2275,7 @@ function _M.access()
 
     local upload_decision = enforce_upload_protection(config, site, policy)
     if upload_decision == "block" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "upload-protection", "blocked by LiteWaf upload protection")
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf upload protection"}}')
@@ -2278,11 +2284,11 @@ function _M.access()
 
     local bot_decision = enforce_bot_protection(config, site)
     if bot_decision == "challenge" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "bot-challenge", "Bot protection challenge issued")
         return ngx.exit(ngx.HTTP_OK)
     end
     if bot_decision == "block" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "bot-protection", "blocked by LiteWaf bot protection")
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf bot protection"}}')
@@ -2291,7 +2297,7 @@ function _M.access()
 
     local dynamic_decision = enforce_dynamic_protection(config, site)
     if dynamic_decision == "block" then
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "dynamic-protection", "blocked by LiteWaf dynamic protection")
         ngx.status = ngx.HTTP_FORBIDDEN
         ngx.header.content_type = "application/json"
         ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf dynamic protection"}}')
@@ -2300,7 +2306,7 @@ function _M.access()
     if dynamic_decision == "waiting-room" then
         local rule = ngx.ctx.dynamic_waiting_room_rule
         local dynamic = rule and dynamic_rule_config(rule) or {}
-        ngx.ctx.disposition = "blocked"
+        set_denial("blocked", "waiting-room", "waiting-room overflow queued")
         ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
         ngx.header.content_type = "text/html; charset=utf-8"
         ngx.header["Retry-After"] = tostring(tonumber(dynamic.retry_interval_sec or 5) or 5)
@@ -2327,7 +2333,7 @@ function _M.access()
                 body_metadata = "max_bytes=" .. tostring(policy.body_inspection_max_bytes or 0)
             })
             if action == "block" and site.mode == "protect" then
-                ngx.ctx.disposition = "blocked"
+                set_denial("blocked", "body-inspection", "request body exceeded inspection limit")
                 ngx.status = ngx.HTTP_FORBIDDEN
                 ngx.header.content_type = "application/json"
                 ngx.say('{"error":{"code":"forbidden","message":"request body too large for LiteWaf policy"}}')
@@ -2350,7 +2356,7 @@ function _M.access()
                 upload_metadata = "content_length=" .. tostring(content_length) .. ", max_bytes=" .. tostring(policy.upload_max_bytes)
             })
             if action == "block" and site.mode == "protect" then
-                ngx.ctx.disposition = "blocked"
+                set_denial("blocked", "upload-inspection", "upload exceeded configured size")
                 ngx.status = ngx.HTTP_FORBIDDEN
                 ngx.header.content_type = "application/json"
                 ngx.say('{"error":{"code":"forbidden","message":"upload too large for LiteWaf policy"}}')
@@ -2393,7 +2399,7 @@ function _M.access()
                 if policy.dynamic_ban_enabled and score >= (tonumber(policy.dynamic_ban_score_threshold or 0) or 0) then
                     create_dynamic_ban(site, "waf-rule:" .. tostring(rule.id or 0), policy.dynamic_ban_duration_sec)
                 end
-                ngx.ctx.disposition = "blocked"
+                set_denial("blocked", "waf-rule", rule.name or "blocked by LiteWaf")
                 ngx.status = ngx.HTTP_FORBIDDEN
                 ngx.header.content_type = "application/json"
                 ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf"}}')
@@ -2435,7 +2441,7 @@ function _M.access()
             create_dynamic_ban(site, "score-threshold", policy.dynamic_ban_duration_sec)
         end
         if threshold_action == "block" and site.mode == "protect" then
-            ngx.ctx.disposition = "blocked"
+            set_denial("blocked", "score-threshold", "score threshold reached")
             ngx.status = ngx.HTTP_FORBIDDEN
             ngx.header.content_type = "application/json"
             ngx.say('{"error":{"code":"forbidden","message":"blocked by LiteWaf score threshold"}}')
@@ -2538,7 +2544,9 @@ function _M.log()
         duration_ms = math.floor((ngx.now() - started_at) * 1000),
         client_ip = client_ip(),
         user_agent = ngx.var.http_user_agent,
-        disposition = disposition
+        disposition = disposition,
+        reason_code = ngx.ctx.denial_reason_code or "",
+        reason = bounded(ngx.ctx.denial_reason or "")
     }
     log_json(ngx.INFO, payload)
     schedule_ingestion("/api/v1/ingest/access-logs", payload)
