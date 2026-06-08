@@ -117,6 +117,20 @@ local function bounded(value)
     return string.sub(value, 1, max_summary_len) .. "...truncated"
 end
 
+local function first_non_empty(...)
+    for i = 1, select("#", ...) do
+        local value = select(i, ...)
+        if value ~= nil then
+            value = tostring(value):gsub("^%s+", ""):gsub("%s+$", "")
+            local lower = string.lower(value)
+            if value ~= "" and value ~= "-" and lower ~= "unknown" then
+                return value
+            end
+        end
+    end
+    return ""
+end
+
 local function hash_bounded(value)
     value = tostring(value or "")
     local hash = 2166136261
@@ -2544,6 +2558,12 @@ function _M.log()
         duration_ms = math.floor((ngx.now() - started_at) * 1000),
         client_ip = client_ip(),
         user_agent = ngx.var.http_user_agent,
+        referer = ngx.var.http_referer or "",
+        geo_country = first_non_empty(ngx.var.http_cf_ipcountry, ngx.var.http_cloudfront_viewer_country, ngx.var.http_x_geo_country, ngx.var.http_x_country_code, ngx.var.http_x_country, ngx.var.http_x_appengine_country),
+        geo_region = first_non_empty(ngx.var.http_x_geo_region, ngx.var.http_x_region, ngx.var.http_cf_region, ngx.var.http_x_appengine_region),
+        geo_city = first_non_empty(ngx.var.http_x_geo_city, ngx.var.http_x_city, ngx.var.http_cf_ipcity, ngx.var.http_x_appengine_city),
+        geo_longitude = tonumber(first_non_empty(ngx.var.http_x_geo_longitude, ngx.var.http_x_longitude, ngx.var.http_cf_iplongitude)),
+        geo_latitude = tonumber(first_non_empty(ngx.var.http_x_geo_latitude, ngx.var.http_x_latitude, ngx.var.http_cf_iplatitude)),
         disposition = disposition,
         reason_code = ngx.ctx.denial_reason_code or "",
         reason = bounded(ngx.ctx.denial_reason or "")
