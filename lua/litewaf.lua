@@ -2559,11 +2559,6 @@ function _M.log()
         client_ip = client_ip(),
         user_agent = ngx.var.http_user_agent,
         referer = ngx.var.http_referer or "",
-        geo_country = first_non_empty(ngx.var.http_cf_ipcountry, ngx.var.http_cloudfront_viewer_country, ngx.var.http_x_geo_country, ngx.var.http_x_country_code, ngx.var.http_x_country, ngx.var.http_x_appengine_country),
-        geo_region = first_non_empty(ngx.var.http_x_geo_region, ngx.var.http_x_region, ngx.var.http_cf_region, ngx.var.http_x_appengine_region),
-        geo_city = first_non_empty(ngx.var.http_x_geo_city, ngx.var.http_x_city, ngx.var.http_cf_ipcity, ngx.var.http_x_appengine_city),
-        geo_longitude = tonumber(first_non_empty(ngx.var.http_x_geo_longitude, ngx.var.http_x_longitude, ngx.var.http_cf_iplongitude)),
-        geo_latitude = tonumber(first_non_empty(ngx.var.http_x_geo_latitude, ngx.var.http_x_latitude, ngx.var.http_cf_iplatitude)),
         disposition = disposition,
         reason_code = ngx.ctx.denial_reason_code or "",
         reason = bounded(ngx.ctx.denial_reason or "")
