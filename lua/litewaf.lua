@@ -680,6 +680,7 @@ local function normalize_client_ip(value)
 end
 
 local path_prefix_matches
+local path_matches
 local methods_match
 
 local function entry_for_site(entry, site)
@@ -810,12 +811,7 @@ local function access_control_rule_matches(rule, site)
         return false
     end
     if target == "path" then
-        local path = tostring(match.path or value)
-        local path_match = tostring(match.path_match or match.operator or "exact")
-        if path_match == "prefix" then
-            return path_prefix_matches(path, ngx.var.uri or "")
-        end
-        return (ngx.var.uri or "") == path
+        return path_matches(match.path or value, match.path_match or match.operator or "exact", ngx.var.uri or "")
     end
     if target == "header" then
         local header_name = tostring(match.header_name or "")
@@ -918,6 +914,24 @@ path_prefix_matches = function(prefix, uri)
     return uri == prefix or string.sub(uri, 1, #prefix + 1) == prefix .. "/"
 end
 
+local function glob_path_matches(pattern, uri)
+    pattern = "^" .. string.gsub(string.gsub(string.gsub(pattern, "([%.%+%-%^%$%(%)%%])", "%%%1"), "%*", "[^/]*"), "%?", "[^/]") .. "$"
+    return string.match(uri, pattern) ~= nil
+end
+
+path_matches = function(path, path_match, uri)
+    path = tostring(path or "/")
+    path_match = tostring(path_match or "exact")
+    uri = tostring(uri or "")
+    if path_match == "prefix" then
+        return path_prefix_matches(path, uri)
+    end
+    if path_match == "glob" then
+        return glob_path_matches(path, uri)
+    end
+    return uri == path
+end
+
 methods_match = function(methods)
     if type(methods) ~= "table" or #methods == 0 then
         return true
@@ -939,17 +953,7 @@ local function cc_rule_matches(rule, site)
     if not methods_match(match.methods) then
         return false
     end
-    local path = tostring(match.path or "/")
-    local path_match = tostring(match.path_match or "exact")
-    local uri = ngx.var.uri or ""
-    if path_match == "prefix" then
-        return path_prefix_matches(path, uri)
-    end
-    if path_match == "glob" then
-        local pattern = "^" .. string.gsub(string.gsub(string.gsub(path, "([%.%+%-%^%$%(%)%%])", "%%%1"), "%*", "[^/]*"), "%?", "[^/]") .. "$"
-        return string.match(uri, pattern) ~= nil
-    end
-    return uri == path
+    return path_matches(match.path or "/", match.path_match or "exact", ngx.var.uri or "")
 end
 
 local function cc_session_value(limit)
@@ -1371,13 +1375,7 @@ local function upload_rule_scope_matches(rule, site)
     if not methods_match(match.methods) then
         return false
     end
-    local path = tostring(match.path or "/")
-    local path_match = tostring(match.path_match or "prefix")
-    local uri = ngx.var.uri or ""
-    if path_match == "exact" then
-        return uri == path
-    end
-    return path_prefix_matches(path, uri)
+    return path_matches(match.path or "/", match.path_match or "prefix", ngx.var.uri or "")
 end
 
 local function extension_set(values)
@@ -1480,13 +1478,7 @@ local function bot_rule_matches(rule, site)
     if not methods_match(match.methods) then
         return false
     end
-    local path = tostring(match.path or "/")
-    local path_match = tostring(match.path_match or "prefix")
-    local uri = ngx.var.uri or ""
-    if path_match == "exact" then
-        return uri == path
-    end
-    return path_prefix_matches(path, uri)
+    return path_matches(match.path or "/", match.path_match or "prefix", ngx.var.uri or "")
 end
 
 local function bot_secret(config)
@@ -1845,13 +1837,7 @@ local function dynamic_rule_matches(rule, site)
     if not methods_match(match.methods) then
         return false
     end
-    local path = tostring(match.path or "/")
-    local path_match = tostring(match.path_match or "prefix")
-    local uri = ngx.var.uri or ""
-    if path_match == "exact" then
-        return uri == path
-    end
-    return path_prefix_matches(path, uri)
+    return path_matches(match.path or "/", match.path_match or "prefix", ngx.var.uri or "")
 end
 
 local function dynamic_rule_config(rule)
