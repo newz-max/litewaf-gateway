@@ -51,10 +51,46 @@ local function host_without_port(host)
     return string.lower((host:gsub(":%d+$", "")))
 end
 
+local path_matches
+
+local function upstream_lookup(upstreams)
+    local by_name = {}
+    for _, upstream in ipairs(upstreams or {}) do
+        local name = tostring(upstream.name or "")
+        if name ~= "" then
+            by_name[name] = upstream
+        end
+    end
+    return by_name
+end
+
+local function first_enabled_upstream(upstreams)
+    for _, candidate in ipairs(upstreams or {}) do
+        if candidate.enabled ~= false and tostring(candidate.url or "") ~= "" then
+            return candidate
+        end
+    end
+    return nil
+end
+
+local function select_route(app, uri)
+    local by_name = upstream_lookup(app.upstreams or {})
+    for _, route in ipairs(app.routes or {}) do
+        if route.enabled ~= false and path_matches and path_matches(route.path or "/", route.path_match or "prefix", uri or "") then
+            local upstream = by_name[tostring(route.upstream_name or "")]
+            if upstream and upstream.enabled ~= false and tostring(upstream.url or "") ~= "" then
+                return route, upstream
+            end
+        end
+    end
+    return nil, first_enabled_upstream(app.upstreams or {})
+end
+
 local function find_site(config, host)
     local normalized = host_without_port(host)
     local request_port = tonumber(ngx.var.server_port or 0) or 0
     local request_scheme = string.lower(ngx.var.scheme or "http")
+    local request_uri = ngx.var.uri or ""
     for _, app in ipairs(config.applications or {}) do
         if app.enabled ~= false then
             local host_matched = false
@@ -69,25 +105,24 @@ local function find_site(config, host)
                     local listener_port = tonumber(listener.port or 0) or 0
                     local listener_protocol = string.lower(listener.protocol or "http")
                     if listener.enabled ~= false and listener_port == request_port and listener_protocol == request_scheme then
-                        local upstream = ""
-                        for _, candidate in ipairs(app.upstreams or {}) do
-                            if candidate.enabled ~= false and tostring(candidate.url or "") ~= "" then
-                                upstream = tostring(candidate.url)
-                                break
-                            end
-                        end
-                        if upstream ~= "" then
+                        local route, upstream = select_route(app, request_uri)
+                        if upstream and tostring(upstream.url or "") ~= "" then
                             ngx.ctx.application_id = app.id or 0
                             ngx.ctx.listener_port = listener_port
                             ngx.ctx.listener_scheme = listener_protocol
                             ngx.ctx.application_host = normalized
+                            ngx.ctx.route_id = route and (route.id or 0) or 0
+                            ngx.ctx.route_name = route and (route.name or "") or ""
+                            ngx.ctx.route_path = route and (route.path or "") or ""
+                            ngx.ctx.route_upstream_name = route and (route.upstream_name or upstream.name or "") or ""
                             return {
                                 id = app.id,
                                 name = app.name,
                                 host = normalized,
-                                upstream = upstream,
+                                upstream = tostring(upstream.url),
                                 mode = app.mode,
                                 enabled = app.enabled,
+                                route = route,
                                 rules = app.rules or {},
                                 policy = app.policy or {}
                             }
@@ -103,6 +138,10 @@ local function find_site(config, host)
             ngx.ctx.listener_port = request_port
             ngx.ctx.listener_scheme = request_scheme
             ngx.ctx.application_host = normalized
+            ngx.ctx.route_id = 0
+            ngx.ctx.route_name = ""
+            ngx.ctx.route_path = ""
+            ngx.ctx.route_upstream_name = ""
             return site
         end
     end
@@ -680,7 +719,6 @@ local function normalize_client_ip(value)
 end
 
 local path_prefix_matches
-local path_matches
 local methods_match
 
 local function entry_for_site(entry, site)
@@ -2533,6 +2571,10 @@ function _M.log()
         request_id = ensure_request_id(),
         application_id = ngx.ctx.application_id or site.id or 0,
         application_name = site.name or "",
+        route_id = ngx.ctx.route_id or 0,
+        route_name = ngx.ctx.route_name or "",
+        route_path = ngx.ctx.route_path or "",
+        route_upstream_name = ngx.ctx.route_upstream_name or "",
         listener_port = ngx.ctx.listener_port or tonumber(ngx.var.server_port or 0) or 0,
         scheme = ngx.ctx.listener_scheme or ngx.var.scheme or "",
         host = host_without_port(ngx.var.host),

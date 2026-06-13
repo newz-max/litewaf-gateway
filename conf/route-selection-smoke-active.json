@@ -1,0 +1,102 @@
+{
+  "version": "route-selection-smoke",
+  "generated_at": "2026-06-13T00:00:00Z",
+  "applications": [
+    {
+      "id": 1,
+      "name": "Route Selection",
+      "mode": "protect",
+      "enabled": true,
+      "hosts": ["routes.local"],
+      "listeners": [
+        {
+          "port": 8080,
+          "protocol": "http",
+          "enabled": true
+        }
+      ],
+      "upstreams": [
+        {
+          "name": "default",
+          "url": "http://litewaf-route-selection-default:5678",
+          "weight": 1,
+          "enabled": true
+        },
+        {
+          "name": "api",
+          "url": "http://litewaf-route-selection-api:5678",
+          "weight": 1,
+          "enabled": true
+        },
+        {
+          "name": "admin",
+          "url": "http://litewaf-route-selection-admin:5678",
+          "weight": 1,
+          "enabled": true
+        }
+      ],
+      "routes": [
+        {
+          "id": 4,
+          "name": "Exact",
+          "path": "/exact",
+          "path_match": "exact",
+          "upstream_name": "admin",
+          "priority": 5,
+          "enabled": true
+        },
+        {
+          "id": 1,
+          "name": "API",
+          "path": "/api",
+          "path_match": "prefix",
+          "upstream_name": "api",
+          "priority": 10,
+          "enabled": true
+        },
+        {
+          "id": 2,
+          "name": "Disabled",
+          "path": "/disabled",
+          "path_match": "exact",
+          "upstream_name": "api",
+          "priority": 20,
+          "enabled": false
+        },
+        {
+          "id": 3,
+          "name": "Assets",
+          "path": "/assets/*",
+          "path_match": "glob",
+          "upstream_name": "admin",
+          "priority": 30,
+          "enabled": true
+        }
+      ],
+      "rules": [],
+      "policy": {
+        "risk_threshold": 100,
+        "default_action": "block"
+      }
+    }
+  ],
+  "protection_rules": [
+    {
+      "id": 9001,
+      "name": "Route smoke WAF block",
+      "module": "access-control",
+      "category": "access-control",
+      "enabled": true,
+      "site_id": 1,
+      "match": {
+        "target": "path",
+        "path": "/api/blocked",
+        "path_match": "exact"
+      },
+      "action": {
+        "type": "block"
+      }
+    }
+  ],
+  "sites": []
+}
