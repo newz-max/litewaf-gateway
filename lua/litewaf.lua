@@ -77,6 +77,9 @@ local function select_route(app, uri)
     local by_name = upstream_lookup(app.upstreams or {})
     for _, route in ipairs(app.routes or {}) do
         if route.enabled ~= false and path_matches and path_matches(route.path or "/", route.path_match or "prefix", uri or "") then
+            if tostring(route.target_type or "proxy") == "static" then
+                return route, nil
+            end
             local upstream = by_name[tostring(route.upstream_name or "")]
             if upstream and upstream.enabled ~= false and tostring(upstream.url or "") ~= "" then
                 return route, upstream
@@ -106,7 +109,31 @@ local function find_site(config, host)
                     local listener_protocol = string.lower(listener.protocol or "http")
                     if listener.enabled ~= false and listener_port == request_port and listener_protocol == request_scheme then
                         local route, upstream = select_route(app, request_uri)
-                        if upstream and tostring(upstream.url or "") ~= "" then
+                        if route and tostring(route.target_type or "proxy") == "static" then
+                            ngx.ctx.application_id = app.id or 0
+                            ngx.ctx.listener_port = listener_port
+                            ngx.ctx.listener_scheme = listener_protocol
+                            ngx.ctx.application_host = normalized
+                            ngx.ctx.route_id = route.id or 0
+                            ngx.ctx.route_name = route.name or ""
+                            ngx.ctx.route_path = route.path or ""
+                            ngx.ctx.route_target_type = "static"
+                            ngx.ctx.route_upstream_name = ""
+                            ngx.ctx.route_static_root = route.static_root or ""
+                            ngx.ctx.route_static_mode = route.static_mode or ""
+                            return {
+                                id = app.id,
+                                name = app.name,
+                                host = normalized,
+                                upstream = "",
+                                mode = app.mode,
+                                enabled = app.enabled,
+                                route = route,
+                                target_type = "static",
+                                rules = app.rules or {},
+                                policy = app.policy or {}
+                            }
+                        elseif upstream and tostring(upstream.url or "") ~= "" then
                             ngx.ctx.application_id = app.id or 0
                             ngx.ctx.listener_port = listener_port
                             ngx.ctx.listener_scheme = listener_protocol
@@ -114,7 +141,10 @@ local function find_site(config, host)
                             ngx.ctx.route_id = route and (route.id or 0) or 0
                             ngx.ctx.route_name = route and (route.name or "") or ""
                             ngx.ctx.route_path = route and (route.path or "") or ""
+                            ngx.ctx.route_target_type = route and tostring(route.target_type or "proxy") or "proxy"
                             ngx.ctx.route_upstream_name = route and (route.upstream_name or upstream.name or "") or ""
+                            ngx.ctx.route_static_root = ""
+                            ngx.ctx.route_static_mode = ""
                             return {
                                 id = app.id,
                                 name = app.name,
@@ -141,7 +171,10 @@ local function find_site(config, host)
             ngx.ctx.route_id = 0
             ngx.ctx.route_name = ""
             ngx.ctx.route_path = ""
+            ngx.ctx.route_target_type = "proxy"
             ngx.ctx.route_upstream_name = ""
+            ngx.ctx.route_static_root = ""
+            ngx.ctx.route_static_mode = ""
             return site
         end
     end
@@ -168,6 +201,13 @@ local function first_non_empty(...)
         end
     end
     return ""
+end
+
+local function success_disposition(site)
+    if site and tostring(site.target_type or "proxy") == "static" then
+        return "served-static"
+    end
+    return "proxied"
 end
 
 local function hash_bounded(value)
@@ -2260,7 +2300,12 @@ function _M.access()
         return ngx.exit(ngx.HTTP_NOT_FOUND)
     end
 
-    ngx.var.litewaf_upstream = site.upstream
+    if tostring(site.target_type or "proxy") == "static" then
+        ngx.var.litewaf_upstream = ""
+        ngx.ctx.disposition = "served-static"
+    else
+        ngx.var.litewaf_upstream = site.upstream
+    end
     ngx.ctx.site = site
     local policy = policy_for_site(site)
 
@@ -2278,7 +2323,7 @@ function _M.access()
 
     local ip_access_decision = enforce_ip_access_lists(config, site)
     if ip_access_decision == "allow" then
-        ngx.ctx.disposition = "proxied"
+        ngx.ctx.disposition = success_disposition(site)
         return
     end
     if ip_access_decision == "block" then
@@ -2291,7 +2336,7 @@ function _M.access()
 
     local access_decision = enforce_access_control(config, site)
     if access_decision == "allow" then
-        ngx.ctx.disposition = "proxied"
+        ngx.ctx.disposition = success_disposition(site)
         return
     end
     if access_decision == "block" then
@@ -2574,7 +2619,10 @@ function _M.log()
         route_id = ngx.ctx.route_id or 0,
         route_name = ngx.ctx.route_name or "",
         route_path = ngx.ctx.route_path or "",
+        route_target_type = ngx.ctx.route_target_type or site.target_type or "proxy",
         route_upstream_name = ngx.ctx.route_upstream_name or "",
+        route_static_root = ngx.ctx.route_static_root or "",
+        route_static_mode = ngx.ctx.route_static_mode or "",
         listener_port = ngx.ctx.listener_port or tonumber(ngx.var.server_port or 0) or 0,
         scheme = ngx.ctx.listener_scheme or ngx.var.scheme or "",
         host = host_without_port(ngx.var.host),
