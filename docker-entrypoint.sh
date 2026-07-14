@@ -2,16 +2,72 @@
 set -eu
 
 realip_conf="${LITEWAF_REAL_IP_CONF:-/usr/local/openresty/nginx/conf/litewaf-realip.conf}"
+admin_conf="${LITEWAF_ADMIN_CONF:-/usr/local/openresty/nginx/conf/litewaf-admin.conf}"
+resolver_conf="${LITEWAF_RESOLVER_CONF:-/usr/local/openresty/nginx/conf/litewaf-resolver.conf}"
+resolv_conf="${LITEWAF_RESOLV_CONF:-/etc/resolv.conf}"
 listener_dir="${LITEWAF_LISTENER_DIR:-/etc/litewaf/listeners}"
 reload_state_file="${LITEWAF_RELOAD_STATE_FILE:-/var/lib/litewaf/runtime/reload-status.json}"
-reload_watch_enabled="${LITEWAF_RELOAD_WATCH_ENABLED:-true}"
+activation_agent="${LITEWAF_ACTIVATION_AGENT:-/usr/local/bin/litewaf-activation-agent.sh}"
+litewaf_root="${LITEWAF_ROOT:-/etc/litewaf}"
+deployment_mode="${LITEWAF_DEPLOYMENT_MODE:-bridge}"
+admin_listen="${LITEWAF_ADMIN_LISTEN:-}"
+resolver_ipv6="${LITEWAF_RESOLVER_IPV6:-on}"
 runtime_uid="${LITEWAF_RUNTIME_UID:-999}"
 runtime_gid="${LITEWAF_RUNTIME_GID:-999}"
 trusted_cidrs="${LITEWAF_REAL_IP_TRUSTED_CIDRS:-}"
 realip_header="${LITEWAF_REAL_IP_HEADER:-X-Forwarded-For}"
 realip_recursive="${LITEWAF_REAL_IP_RECURSIVE:-on}"
 
+prepare_versioned_runtime() {
+  releases_dir="${LITEWAF_RELEASES_DIR:-$litewaf_root/releases}"
+  current_link="${LITEWAF_CURRENT_LINK:-$litewaf_root/current}"
+  if [ -L "$current_link" ] && [ -f "$current_link/nginx.conf" ] && [ -f "$current_link/active.json" ]; then
+    return
+  fi
+  bootstrap="$releases_dir/bootstrap"
+  mkdir -p "$bootstrap/listeners" "$bootstrap/certificates"
+  legacy_config="${LITEWAF_CONFIG_PATH:-$litewaf_root/active.json}"
+  if [ -f "$legacy_config" ]; then
+    cp "$legacy_config" "$bootstrap/active.json"
+  else
+    printf '{"version":"bootstrap","generated_at":"1970-01-01T00:00:00Z","applications":[],"sites":[]}\n' > "$bootstrap/active.json"
+  fi
+  if [ -d "$litewaf_root/listeners" ]; then
+    cp -a "$litewaf_root/listeners/." "$bootstrap/listeners/"
+  fi
+  if [ -d "$litewaf_root/certificates" ]; then
+    cp -a "$litewaf_root/certificates/." "$bootstrap/certificates/"
+  fi
+  : > "$bootstrap/listeners/applications.conf"
+  if [ -f "$litewaf_root/listeners/applications.conf" ]; then
+    cp "$litewaf_root/listeners/applications.conf" "$bootstrap/listeners/applications.conf"
+  fi
+  if [ -f "$litewaf_root/listeners/body-size.conf" ]; then
+    cp "$litewaf_root/listeners/body-size.conf" "$bootstrap/listeners/body-size.conf"
+  else
+    printf 'client_max_body_size 50m;\n' > "$bootstrap/listeners/body-size.conf"
+  fi
+  sed 's@include /etc/litewaf/listeners/\*.conf;@include listeners/*.conf;@' /usr/local/openresty/nginx/conf/nginx.conf > "$bootstrap/nginx.conf"
+
+  active_sha="sha256:$(sha256sum "$bootstrap/active.json" | awk '{print $1}')"
+  nginx_sha="sha256:$(sha256sum "$bootstrap/nginx.conf" | awk '{print $1}')"
+  listeners_sha="sha256:$(sha256sum "$bootstrap/listeners/applications.conf" | awk '{print $1}')"
+  body_sha="sha256:$(sha256sum "$bootstrap/listeners/body-size.conf" | awk '{print $1}')"
+  active_size="$(stat -c %s "$bootstrap/active.json")"
+  nginx_size="$(stat -c %s "$bootstrap/nginx.conf")"
+  listeners_size="$(stat -c %s "$bootstrap/listeners/applications.conf")"
+  body_size="$(stat -c %s "$bootstrap/listeners/body-size.conf")"
+  cat > "$bootstrap/manifest.json" <<EOF
+{"schema_version":1,"version":"bootstrap","generated_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","artifacts":[{"path":"active.json","sha256":"$active_sha","size":$active_size},{"path":"nginx.conf","sha256":"$nginx_sha","size":$nginx_size},{"path":"listeners/applications.conf","sha256":"$listeners_sha","size":$listeners_size},{"path":"listeners/body-size.conf","sha256":"$body_sha","size":$body_size}],"listeners":[]}
+EOF
+  rm -f "${current_link}.new"
+  ln -s "releases/bootstrap" "${current_link}.new"
+  mv -Tf "${current_link}.new" "$current_link"
+}
+
 mkdir -p "$(dirname "$realip_conf")"
+mkdir -p "$(dirname "$admin_conf")"
+mkdir -p "$(dirname "$resolver_conf")"
 mkdir -p "$listener_dir"
 mkdir -p "$(dirname "$reload_state_file")"
 : > "$realip_conf"
@@ -21,6 +77,100 @@ chmod -R u+rwX,go+rX "$listener_dir"
 if [ ! -f "$reload_state_file" ]; then
   printf '{"status":"not_run","message":"reload has not run","updated_at":""}\n' > "$reload_state_file"
 fi
+
+case "$(printf '%s' "$deployment_mode" | tr '[:upper:]_' '[:lower:]-')" in
+  host|host-network)
+    deployment_mode="host-network"
+    default_admin_listen="127.0.0.1:18082"
+    ;;
+  bridge|bridge-range)
+    deployment_mode="bridge"
+    default_admin_listen="0.0.0.0:8080"
+    ;;
+  *)
+    echo "invalid LITEWAF_DEPLOYMENT_MODE: $deployment_mode" >&2
+    exit 1
+    ;;
+esac
+
+if [ "$admin_listen" = "" ]; then
+  admin_listen="$default_admin_listen"
+fi
+if ! printf '%s' "$admin_listen" | grep -Eq '^[0-9.]+:[0-9]+$'; then
+  echo "invalid LITEWAF_ADMIN_LISTEN: $admin_listen" >&2
+  exit 1
+fi
+admin_port="${admin_listen##*:}"
+if [ "$admin_port" -lt 1 ] || [ "$admin_port" -gt 65535 ]; then
+  echo "invalid LITEWAF_ADMIN_LISTEN port: $admin_port" >&2
+  exit 1
+fi
+
+cat > "$admin_conf" <<EOF
+# generated by litewaf gateway entrypoint; do not edit
+server {
+    listen $admin_listen;
+    server_name _;
+
+    location = /healthz {
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    location = /metrics {
+        content_by_lua_block { litewaf.metrics() }
+    }
+
+    location = /runtime-version {
+        content_by_lua_block { litewaf.runtime_version() }
+    }
+
+    location / {
+        return 404;
+    }
+}
+EOF
+
+if [ ! -r "$resolv_conf" ]; then
+  echo "resolver source is not readable: $resolv_conf" >&2
+  exit 1
+fi
+nameservers="$(awk '$1 == "nameserver" && $2 != "" { print $2 }' "$resolv_conf" | tr -d '\r')"
+if [ "$nameservers" = "" ]; then
+  echo "no usable nameserver found in $resolv_conf" >&2
+  exit 1
+fi
+resolver_addresses=""
+for nameserver in $nameservers; do
+  if ! printf '%s' "$nameserver" | grep -Eq '^[0-9A-Fa-f:.%]+$'; then
+    echo "invalid nameserver in $resolv_conf: $nameserver" >&2
+    exit 1
+  fi
+  case "$nameserver" in
+    *%*)
+      echo "scoped IPv6 nameserver is not supported: $nameserver" >&2
+      exit 1
+      ;;
+    *:*)
+      nameserver="[$nameserver]"
+      ;;
+  esac
+  resolver_addresses="$resolver_addresses $nameserver"
+done
+
+case "$(printf '%s' "$resolver_ipv6" | tr '[:upper:]' '[:lower:]')" in
+  1|true|yes|on)
+    resolver_family=""
+    ;;
+  0|false|no|off)
+    resolver_family=" ipv6=off"
+    ;;
+  *)
+    echo "invalid LITEWAF_RESOLVER_IPV6: $resolver_ipv6" >&2
+    exit 1
+    ;;
+esac
+printf '# generated by litewaf gateway entrypoint; do not edit\nresolver%s%s valid=10s;\n' "$resolver_addresses" "$resolver_family" > "$resolver_conf"
 
 normalized_cidrs="$(printf '%s' "$trusted_cidrs" | tr -d '[:space:],')"
 if [ "$normalized_cidrs" != "" ]; then
@@ -61,15 +211,12 @@ if [ "$normalized_cidrs" != "" ]; then
   done
 fi
 
-case "$(printf '%s' "$reload_watch_enabled" | tr '[:upper:]' '[:lower:]')" in
-  1|true|yes|on)
-    /usr/local/bin/litewaf-reload-watch.sh &
-    ;;
-  0|false|no|off)
-    ;;
-  *)
-    echo "invalid LITEWAF_RELOAD_WATCH_ENABLED: $reload_watch_enabled" >&2
-    exit 1
+prepare_versioned_runtime
+export LITEWAF_CONFIG_PATH="${LITEWAF_CURRENT_LINK:-$litewaf_root/current}/active.json"
+"$activation_agent" &
+case "${1:-}" in
+  /usr/local/openresty/bin/openresty|openresty)
+    set -- /usr/local/openresty/bin/openresty -e stderr -p "${LITEWAF_CURRENT_LINK:-$litewaf_root/current}/" -c nginx.conf -g "daemon off;"
     ;;
 esac
 

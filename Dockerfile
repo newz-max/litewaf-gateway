@@ -6,10 +6,10 @@ COPY litewaf-realip.conf /usr/local/openresty/nginx/conf/litewaf-realip.conf
 COPY lua /usr/local/openresty/nginx/lua
 COPY conf /etc/litewaf
 COPY docker-entrypoint.sh /usr/local/bin/litewaf-entrypoint.sh
-COPY litewaf-reload.sh /usr/local/bin/litewaf-reload.sh
-COPY litewaf-reload-watch.sh /usr/local/bin/litewaf-reload-watch.sh
+COPY litewaf-activation-agent.sh /usr/local/bin/litewaf-activation-agent.sh
+COPY scripts/activation-contract-cli.lua /usr/local/share/litewaf/activation-contract-cli.lua
 
-RUN chmod +x /usr/local/bin/litewaf-entrypoint.sh /usr/local/bin/litewaf-reload.sh /usr/local/bin/litewaf-reload-watch.sh
+RUN chmod +x /usr/local/bin/litewaf-entrypoint.sh /usr/local/bin/litewaf-activation-agent.sh
 
 EXPOSE 8080
 

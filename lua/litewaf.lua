@@ -2685,4 +2685,25 @@ function _M.metrics()
     end
 end
 
+function _M.runtime_version()
+    local config = load_config()
+    ngx.header.content_type = "application/json"
+    ngx.say(cjson.encode({
+        status = "ok",
+        version = tostring(config.version or "")
+    }))
+end
+
+function _M.internal_ready()
+    local config = load_config()
+    local version = tostring(config.version or "")
+    ngx.header.content_type = "application/json"
+    if version == "" then
+        ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
+        ngx.say(cjson.encode({ status = "not_ready", version = "" }))
+        return ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+    end
+    ngx.say(cjson.encode({ status = "ready", version = version }))
+end
+
 return _M

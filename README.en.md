@@ -52,10 +52,7 @@ Important environment variables:
 
 | Name | Default | Description |
 | --- | --- | --- |
-| `LITEWAF_CONFIG_PATH` | `/etc/litewaf/active.json` | Active gateway configuration path |
-| `LITEWAF_RELOAD_WATCH_ENABLED` | `true` | Watches published gateway config files and reloads OpenResty automatically |
-| `LITEWAF_RELOAD_WATCH_INTERVAL` | `2` | Seconds between config change checks |
-| `LITEWAF_RELOAD_WATCH_DEBOUNCE` | `1` | Seconds to wait for config writes to stabilize before reload |
+| `LITEWAF_CONFIG_PATH` | `/etc/litewaf/current/active.json` | Active versioned gateway configuration path |
 | `LITEWAF_INGESTION_URL` | empty | LiteWaf API ingestion endpoint |
 | `LITEWAF_INGESTION_TOKEN` | empty | Bearer token for log ingestion |
 | `LITEWAF_METRICS_ENABLED` | `false` | Enables `/metrics` output when true |

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "version": "ruleset-0042",
+  "generated_at": "2026-07-14T10:00:00.123456789Z",
+  "artifacts": [
+    { "path": "active.json", "sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "size": 128 },
+    { "path": "nginx.conf", "sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "size": 256 },
+    { "path": "listeners/applications.conf", "sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "size": 512 },
+    { "path": "listeners/body-size.conf", "sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "size": 64 }
+  ],
+  "listeners": [
+    { "port": 80, "protocol": "http", "host": "app.example.com" },
+    { "port": 443, "protocol": "https", "host": "secure.example.com" }
+  ]
+}
